@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: loanlens-ai-auditor
+    runtime: docker
+    plan: free
+    region: singapore # Closest low-latency region to India
+    branch: main
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false # Set in Render Dashboard -> Environment
+      - key: DATABASE_URL
+        value: sqlite:///./loanlens.db
+      - key: PORT
+        value: 8000
