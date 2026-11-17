@@ -1,5 +1,6 @@
 import os
 import sys
+import asyncio
 from typing import Optional, List
 
 # Ensure backend folder is in Python search path
@@ -74,7 +75,7 @@ for b in possible_backend_dirs:
         break
 
 
-@app.get("/", response_class=FileResponse)
+@app.api_route("/", methods=["GET", "HEAD"], response_class=FileResponse)
 def serve_dashboard():
     """Serves the interactive LoanLens frontend dashboard directly."""
     index_file = os.path.join(FRONTEND_DIR, "index.html")
@@ -83,7 +84,7 @@ def serve_dashboard():
     return {"message": "LoanLens API is running. UI file index.html not found.", "checked_dir": FRONTEND_DIR}
 
 
-@app.get("/sample_sanction_letter.pdf", response_class=FileResponse)
+@app.api_route("/sample_sanction_letter.pdf", methods=["GET", "HEAD"], response_class=FileResponse)
 def get_sample_sanction_pdf():
     """Serves the sample Indian bank sanction letter PDF for demo/testing."""
     sample_file = os.path.join(BACKEND_DIR, "sample_sanction_letter.pdf")
@@ -92,7 +93,7 @@ def get_sample_sanction_pdf():
     raise HTTPException(status_code=404, detail="Sample PDF not found.")
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health_check():
     return {
         "status": "healthy",
@@ -132,10 +133,10 @@ async def audit_loan_document(
             detail="Only PDF documents are supported for loan auditing.",
         )
 
-    # 1. High-Fidelity PDF & Table extraction using PyMuPDF4LLM
+    # 1. High-Fidelity PDF & Table extraction using PyMuPDF (offloaded to thread to avoid blocking event loop)
     try:
         pdf_bytes = await file.read()
-        raw_text = DocumentExtractor.extract_text_from_pdf_bytes(pdf_bytes)
+        raw_text = await asyncio.to_thread(DocumentExtractor.extract_text_from_pdf_bytes, pdf_bytes)
         if not raw_text.strip():
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -163,8 +164,8 @@ async def audit_loan_document(
             detail=f"Extraction model error: {str(e)}",
         )
 
-    # 3. Pure Deterministic Financial Audit (Python Math Engine)
-    audit_result = DeterministicLoanAuditor.audit_loan(extracted_terms)
+    # 3. Pure Deterministic Financial Audit (Python Math Engine - offloaded to thread)
+    audit_result = await asyncio.to_thread(DeterministicLoanAuditor.audit_loan, extracted_terms)
     audit_result.extraction_method = extracted_terms.extraction_method
     audit_result.raw_extracted_text_preview = raw_text[:2500]
 
@@ -212,7 +213,7 @@ async def audit_manual_loan(
     openrouter_api_key: Optional[str] = None,
 ):
     """Directly audit structured loan terms without needing a PDF upload."""
-    audit_result = DeterministicLoanAuditor.audit_loan(payload)
+    audit_result = await asyncio.to_thread(DeterministicLoanAuditor.audit_loan, payload)
     audit_result.extraction_method = payload.extraction_method
     try:
         explanation = await llm_service.generate_multilingual_explanation(
@@ -230,8 +231,8 @@ async def audit_manual_loan(
     summary="Compare two loan offers and rank strictly by Total Cost of Borrowing",
 )
 async def compare_loans(payload: LoanComparisonRequest):
-    audit_a, audit_b, winner_idx = DeterministicLoanAuditor.compare_loans(
-        payload.loan_a, payload.loan_b
+    audit_a, audit_b, winner_idx = await asyncio.to_thread(
+        DeterministicLoanAuditor.compare_loans, payload.loan_a, payload.loan_b
     )
 
     ranked_items = []
