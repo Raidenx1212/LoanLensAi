@@ -58,10 +58,10 @@ class OpenRouterLLMService:
         """
         active_key = custom_api_key or self.api_key or settings.OPENROUTER_API_KEY
 
-        # If API key is missing, use enhanced pattern-matching extraction fallback
-        if not active_key:
+        # If API key is missing or placeholder, use enhanced pattern-matching extraction fallback
+        if not active_key or "your_openrouter" in active_key.lower():
             logger.warning(
-                "OPENROUTER_API_KEY is missing. Using heuristic regex extraction fallback."
+                "OPENROUTER_API_KEY is missing or placeholder. Using heuristic regex extraction fallback."
             )
             return self._heuristic_fallback_extraction(raw_document_text)
 
@@ -128,7 +128,7 @@ class OpenRouterLLMService:
         Supported languages: English, Hindi, Kannada.
         """
         active_key = custom_api_key or self.api_key or settings.OPENROUTER_API_KEY
-        if not active_key:
+        if not active_key or "your_openrouter" in active_key.lower():
             return self._local_template_explanation(audit, language)
 
         audit_summary_for_llm = {

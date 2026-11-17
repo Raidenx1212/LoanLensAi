@@ -110,7 +110,7 @@ def system_status():
     return {
         "openrouter_configured": has_api_key and not is_placeholder,
         "model": "qwen/qwen-2.5-72b-instruct",
-        "pdf_parser": "PyMuPDF4LLM (Markdown Table Structure Preserving)",
+        "pdf_parser": "PyMuPDF Native Table & Text Extractor (Memory-Optimized)",
         "fallback_available": True,
     }
 
