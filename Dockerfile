@@ -27,10 +27,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY backend /app/backend
 COPY frontend /app/frontend
 
-ENV PYTHONPATH=/app/backend
-ENV PORT=8000
+# Ensure both /app and /app/backend are on sys.path
+ENV PYTHONPATH=/app:/app/backend
 
-EXPOSE 8000
+# Render defaults to 10000; listens dynamically on $PORT
+EXPOSE 10000
 
-# Render dynamically passes PORT as an environment variable
-CMD ["sh", "-c", "uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]

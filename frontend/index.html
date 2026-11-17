@@ -426,6 +426,27 @@
     let currentLanguage = 'en';
     let selectedPdfFile = null;
 
+    // Resilient JSON response parser that handles HTML error pages gracefully
+    async function parseJsonResponse(res) {
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok) {
+        if (contentType.includes("application/json")) {
+          const err = await res.json();
+          throw new Error(err.detail || `Server returned status ${res.status}`);
+        } else {
+          const htmlText = await res.text();
+          const match = htmlText.match(/<title>(.*?)<\/title>/i);
+          const title = match ? match[1] : `HTTP ${res.status} Error`;
+          throw new Error(`${title} (${res.status}): The server returned an HTML error page. Check Render application logs.`);
+        }
+      }
+      if (!contentType.includes("application/json")) {
+        const text = await res.text();
+        throw new Error(`Expected JSON response, but server returned: ${text.slice(0, 100)}...`);
+      }
+      return await res.json();
+    }
+
     // Check OpenRouter API key stored in localStorage
     function getStoredApiKey() {
       return localStorage.getItem('loanlens_openrouter_key') || '';
@@ -452,6 +473,10 @@
     async function checkSystemStatus() {
       try {
         const res = await fetch('/api/v1/system-status');
+        if (!res.ok) return;
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) return;
+        
         const data = await res.json();
         const hasKey = data.openrouter_configured || Boolean(getStoredApiKey());
         const statusEl = document.getElementById('api-key-status-text');
@@ -514,19 +539,23 @@
     }
 
     async function loadSampleSanctionLetter() {
-      const response = await fetch('/sample_sanction_letter.pdf');
-      if (response.ok) {
-        const blob = await response.blob();
-        selectedPdfFile = new File([blob], "HDFC_Sanction_Letter.pdf", { type: "application/pdf" });
-        const nameEl = document.getElementById('selected-file-name');
-        nameEl.innerText = `Selected: HDFC_Sanction_Letter.pdf (Sample KFS Loaded)`;
-        nameEl.classList.remove('hidden');
-        
-        const btn = document.getElementById('btn-run-audit');
-        btn.disabled = false;
-        btn.className = "px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950 hover:bg-emerald-400 transition-all cursor-pointer flex items-center space-x-2 shadow-lg shadow-emerald-500/20";
-      } else {
-        alert("Sample file ready! Upload your PDF or use Direct Terms Inspector.");
+      try {
+        const response = await fetch('/sample_sanction_letter.pdf');
+        if (response.ok) {
+          const blob = await response.blob();
+          selectedPdfFile = new File([blob], "HDFC_Sanction_Letter.pdf", { type: "application/pdf" });
+          const nameEl = document.getElementById('selected-file-name');
+          nameEl.innerText = `Selected: HDFC_Sanction_Letter.pdf (Sample KFS Loaded)`;
+          nameEl.classList.remove('hidden');
+          
+          const btn = document.getElementById('btn-run-audit');
+          btn.disabled = false;
+          btn.className = "px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950 hover:bg-emerald-400 transition-all cursor-pointer flex items-center space-x-2 shadow-lg shadow-emerald-500/20";
+        } else {
+          alert("Sample file ready! Upload your PDF or use Direct Terms Inspector.");
+        }
+      } catch (e) {
+        alert("Could not load sample PDF. Please select a PDF from your computer.");
       }
     }
 
@@ -553,12 +582,7 @@
           body: formData,
         });
 
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.detail || 'Audit processing failed.');
-        }
-
-        const data = await res.json();
+        const data = await parseJsonResponse(res);
         renderAuditResults(data);
       } catch (err) {
         alert(`Error: ${err.message}`);
@@ -589,12 +613,13 @@
       };
 
       try {
-        const res = await fetch(`/api/v1/audit/manual?language=${currentLanguage}`, {
+        const apiKeyParam = getStoredApiKey() ? `&openrouter_api_key=${encodeURIComponent(getStoredApiKey())}` : '';
+        const res = await fetch(`/api/v1/audit/manual?language=${currentLanguage}${apiKeyParam}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const data = await res.json();
+        const data = await parseJsonResponse(res);
         renderAuditResults(data);
       } catch (err) {
         alert(`Error: ${err.message}`);
@@ -707,7 +732,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        const data = await res.json();
+        const data = await parseJsonResponse(res);
         
         document.getElementById('comparison-result').classList.remove('hidden');
         document.getElementById('cmp-recommendation-text').innerText = data.recommendation;

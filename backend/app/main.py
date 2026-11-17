@@ -5,8 +5,10 @@ from typing import Optional, List
 # Ensure backend folder is in Python search path
 current_dir = os.path.dirname(os.path.abspath(__file__))  # app
 backend_dir = os.path.dirname(current_dir)                # backend
-if backend_dir not in sys.path:
-    sys.path.insert(0, backend_dir)
+root_dir = os.path.dirname(backend_dir)                   # project root or /app
+for p in [current_dir, backend_dir, root_dir]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,11 +50,28 @@ app.add_middleware(
 
 llm_service = OpenRouterLLMService()
 
-# Path to frontend UI
-FRONTEND_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "frontend")
-)
-BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+# Robust path resolution for local dev, Render native, and Docker
+possible_frontend_dirs = [
+    os.path.abspath(os.path.join(current_dir, "..", "..", "frontend")),
+    os.path.abspath("/app/frontend"),
+    os.path.abspath(os.path.join(os.getcwd(), "frontend")),
+]
+FRONTEND_DIR = possible_frontend_dirs[0]
+for d in possible_frontend_dirs:
+    if os.path.exists(os.path.join(d, "index.html")):
+        FRONTEND_DIR = d
+        break
+
+possible_backend_dirs = [
+    os.path.abspath(os.path.join(current_dir, "..")),
+    os.path.abspath("/app/backend"),
+    os.path.abspath(os.path.join(os.getcwd(), "backend")),
+]
+BACKEND_DIR = possible_backend_dirs[0]
+for b in possible_backend_dirs:
+    if os.path.exists(b):
+        BACKEND_DIR = b
+        break
 
 
 @app.get("/", response_class=FileResponse)
@@ -61,7 +80,7 @@ def serve_dashboard():
     index_file = os.path.join(FRONTEND_DIR, "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
-    return {"message": "LoanLens API is running. UI file index.html not found."}
+    return {"message": "LoanLens API is running. UI file index.html not found.", "checked_dir": FRONTEND_DIR}
 
 
 @app.get("/sample_sanction_letter.pdf", response_class=FileResponse)
