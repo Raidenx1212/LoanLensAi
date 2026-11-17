@@ -110,7 +110,14 @@ class OpenRouterLLMService:
                 response_format={"type": "json_object"},
                 custom_api_key=active_key,
             )
-            clean_json = json.loads(response_text)
+            clean_str = response_text.strip()
+            if clean_str.startswith("```json"):
+                clean_str = clean_str[7:]
+            elif clean_str.startswith("```"):
+                clean_str = clean_str[3:]
+            if clean_str.endswith("```"):
+                clean_str = clean_str[:-3]
+            clean_json = json.loads(clean_str.strip())
             extracted = ExtractedLoanTerms(**clean_json)
             extracted.extraction_method = "openrouter_llm"
             return extracted

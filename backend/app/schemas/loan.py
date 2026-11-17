@@ -1,6 +1,7 @@
+import re
 from enum import Enum
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class InterestRateType(str, Enum):
@@ -77,6 +78,64 @@ class ExtractedLoanTerms(BaseModel):
         default="openrouter_llm",
         description="Method used for extraction (openrouter_llm or offline_heuristic_fallback)",
     )
+
+    @field_validator("interest_type", mode="before")
+    @classmethod
+    def normalize_interest_type(cls, v):
+        if not v or not isinstance(v, str):
+            return InterestRateType.REDUCING
+        v_lower = v.strip().lower()
+        if "flat" in v_lower:
+            return InterestRateType.FLAT
+        if "reduc" in v_lower:
+            return InterestRateType.REDUCING
+        if "float" in v_lower:
+            return InterestRateType.FLOATING
+        if "fix" in v_lower:
+            return InterestRateType.FIXED
+        return InterestRateType.REDUCING
+
+    @field_validator("loan_category", mode="before")
+    @classmethod
+    def normalize_loan_category(cls, v):
+        if not v or not isinstance(v, str):
+            return LoanCategory.PERSONAL
+        v_lower = v.strip().lower()
+        for cat in LoanCategory:
+            if cat.value in v_lower:
+                return cat
+        return LoanCategory.PERSONAL
+
+    @field_validator(
+        "principal_amount",
+        "stated_interest_rate",
+        "processing_fee",
+        "documentation_charges",
+        "bundled_insurance",
+        mode="before",
+    )
+    @classmethod
+    def clean_floats(cls, v):
+        if v is None:
+            return 0.0
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            cleaned = re.sub(r"[^\d.]", "", v)
+            return float(cleaned) if cleaned else 0.0
+        return float(v)
+
+    @field_validator("stated_emi", mode="before")
+    @classmethod
+    def clean_optional_float(cls, v):
+        if v is None or v == "":
+            return None
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            cleaned = re.sub(r"[^\d.]", "", v)
+            return float(cleaned) if cleaned else None
+        return float(v)
 
 
 # =====================================================================
