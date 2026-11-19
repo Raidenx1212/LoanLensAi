@@ -377,7 +377,7 @@ class OpenRouterLLMService:
 
         if language == Language.HINDI:
             return (
-                f"### 🚨 वरिष्ठ वित्त प्रबंधक का आधिकारिक निष्कर्ष (Senior Finance Manager Verdict)\n\n"
+                f"### 🚨 आधिकारिक ऋण विश्लेषण निष्कर्ष (LoanLens Forensic Audit)\n\n"
                 f"कथित ब्याज दर **{audit.stated_annual_rate}%** के मुकाबले आपकी वास्तविक वार्षिक लागत (**True Effective APR**) **{audit.effective_annual_apr}%** है। "
                 f"यह **+{audit.rate_inflation_spread}%** का स्प्रेड बैंक द्वारा छिपाए गए मार्जिन को दर्शाता है।\n\n"
                 f"- **स्वीकृत ऋण राशि**: ₹{audit.principal:,.2f}\n"
@@ -391,14 +391,14 @@ class OpenRouterLLMService:
                 f"(आरबीआई निर्देशों के तहत ऋण बीमा अनिवार्य नहीं हो सकता, यह पूर्णतः स्वैच्छिक है)।\n"
                 + (f"- **EMI विसंगति (EMI Inflation)**: बैंक द्वारा मांगी गई ₹{audit.stated_emi:,.2f} की EMI गणितीय रूप से सही रिड्यूसिंग EMI (₹{audit.calculated_reducing_emi:,.2f}) से **₹{emi_diff:,.2f} प्रति माह अधिक** है! "
                    f"{audit.tenure_months} महीनों में यह कुल **₹{lifetime_emi_loss:,.2f} का अतिरिक्त वित्तीय नुकसान** है।\n\n" if emi_diff > 5 else "- **EMI मिलान**: स्वीकृत EMI रिड्यूसिंग बैलेंस फॉर्मूले से मेल खाती है।\n\n") +
-                f"### 📋 बैंक शाखा प्रबंधक के समक्ष वार्ता रणनीति (Executive Negotiation Playbook)\n\n"
+                f"### 📋 बैंक शाखा प्रबंधक के समक्ष वार्ता रणनीति (Negotiation Playbook)\n\n"
                 f"1. **EMI संशोधन की मांग**: \"बैंक की ₹{audit.stated_emi or audit.calculated_reducing_emi:,.2f} की EMI वास्तविक रिड्यूसिंग बैलेंस गणना (₹{audit.calculated_reducing_emi:,.2f}) से मेल नहीं खाती। कृपया इसे तुरंत संशोधित करें।\"\n"
                 f"2. **प्रोसेसिंग फीस में छूट की मांग**: \"ऋण की वास्तविक APR {audit.effective_annual_apr}% तक पहुंच रही है। ₹{audit.total_upfront_fees_incl_gst:,.2f} के अग्रिम शुल्क पर 50% से 100% की छूट प्रदान करें।\"\n"
                 f"3. **RBI सर्कुलर RBI/2014-15/168 का अनुपालन**: \"फ्लोटिंग रेट व्यक्तिगत ऋण पर प्रीपेमेंट या फोरक्लोजर पेनल्टी लगाना आरबीआई नियमों का उल्लंघन है। मुझे लिखित में शून्य पेनल्टी की पुष्टि दें।\""
             )
         elif language == Language.KANNADA:
             return (
-                f"### 🚨 ಹಿರಿಯ ಹಣಕಾಸು ವ್ಯವಸ್ಥಾಪಕರ ವಿಧಿವಿಜ್ಞಾನ ವರದಿ (Senior Finance Manager Verdict)\n\n"
+                f"### 🚨 ಅಧಿಕೃತ ಸಾಲ ವಿಧಿವಿಜ್ಞಾನ ವರದಿ (LoanLens Forensic Audit)\n\n"
                 f"ಬ್ಯಾಂಕ್ ಘೋಷಿಸಿದ ಬಡ್ಡಿದರ **{audit.stated_annual_rate}%** ಆಗಿದ್ದರೂ, ನಿಮ್ಮ ನೈಜ ಪರಿಣಾಮಕಾರಿ ವಾರ್ಷಿಕ ಬಡ್ಡಿದರ (**True Effective APR**) **{audit.effective_annual_apr}%** ಆಗಿದೆ. "
                 f"ಇದು **+{audit.rate_inflation_spread}%** ನಷ್ಟು ದರ ಹಣದುಬ್ಬರವನ್ನು ತೋರಿಸುತ್ತದೆ.\n\n"
                 f"- **ಮಂಜೂರಾದ ಒಟ್ಟು ಸಾಲ**: ₹{audit.principal:,.2f}\n"
@@ -416,8 +416,8 @@ class OpenRouterLLMService:
             )
         else:
             return (
-                f"### 🚨 Executive Verdict & Treasury Reality Check\n\n"
-                f"As your Senior Finance Manager and Risk Auditor, the numbers indicate a significant divergence from the headline offer. "
+                f"### 🚨 Executive Audit Verdict & Reality Check\n\n"
+                f"Based on our verified financial audit and forensic risk analysis, the numbers indicate a significant divergence from the headline offer. "
                 f"While the bank marketed an annual interest rate of **{audit.stated_annual_rate:.2f}%**, your **True Effective APR (via Newton-Raphson IRR) is {audit.effective_annual_apr:.2f}%**. "
                 f"This represents an aggressive **+{audit.rate_inflation_spread:.2f}% rate spread padding** in the lender's favor.\n\n"
                 f"- **Sanctioned Facility Amount**: ₹{audit.principal:,.2f}\n"
