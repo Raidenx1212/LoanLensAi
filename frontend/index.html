@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LoanLens - AI-Powered Indian Loan Auditor</title>
-  <!-- Tailwind CSS -->
+  <title>LoanLens - Senior Finance Manager AI Loan Auditor</title>
+  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -15,21 +15,18 @@
       theme: {
         extend: {
           colors: {
-            brand: {
-              peach: '#F4BAA3',
-              cream: '#F4F0E2',
-              sky: '#A6C8E2',
-              ocean: '#619DC6',
-              oceanDark: '#487EA4',
-              peachDark: '#E59B80',
-              skyDark: '#85B2D4',
-              surface: '#FFFFFF',
-              surfaceWarm: '#FAF7EE',
-              textPrimary: '#172533',
-              textSecondary: '#4A6174',
-              textMuted: '#758C9E',
-              borderSubtle: '#E2ECF2',
-              borderSky: '#A6C8E2',
+            noir: {
+              black: '#000000',
+              deep: '#070101',
+              card: '#0D0202',
+              cardHover: '#150303',
+              maroon: '#830000',
+              crimson: '#BC0202',
+              redAlert: '#FF0000',
+              borderMuted: '#3D0505',
+              borderGlow: '#830000',
+              textMuted: '#A1A1AA',
+              textSubtle: '#71717A',
             }
           }
         }
@@ -37,141 +34,165 @@
     }
   </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&family=Noto+Sans+Kannada:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;600;700&family=Noto+Sans+Kannada:wght@400;600;700&display=swap');
     
     body {
       font-family: 'Plus Jakarta Sans', 'Noto Sans Devanagari', 'Noto Sans Kannada', sans-serif;
-      background-color: #F4F0E2;
-      color: #172533;
+      background-color: #000000;
+      color: #F4F4F5;
     }
     
-    code, pre {
+    h1, h2, h3, .font-heading {
+      font-family: 'Space Grotesk', sans-serif;
+    }
+
+    code, pre, .font-mono {
       font-family: 'JetBrains Mono', monospace;
     }
 
-    /* Custom subtle scrollbar */
+    /* Cyber Crimson Scrollbar */
     ::-webkit-scrollbar {
       width: 6px;
       height: 6px;
     }
     ::-webkit-scrollbar-track {
-      background: #F4F0E2;
+      background: #000000;
     }
     ::-webkit-scrollbar-thumb {
-      background: #A6C8E2;
+      background: #830000;
       border-radius: 9999px;
     }
     ::-webkit-scrollbar-thumb:hover {
-      background: #619DC6;
+      background: #FF0000;
+    }
+
+    /* Red Glow Animations */
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 15px rgba(255, 0, 0, 0.25); }
+      50% { box-shadow: 0 0 30px rgba(255, 0, 0, 0.55); }
+    }
+    .red-glow {
+      animation: pulseGlow 3s infinite ease-in-out;
+    }
+
+    /* Slider Track Accent */
+    input[type=range] {
+      accent-color: #FF0000;
     }
   </style>
 </head>
-<body class="min-h-screen bg-[#F4F0E2] text-brand-textPrimary flex flex-col antialiased selection:bg-[#F4BAA3] selection:text-[#172533]">
+<body class="min-h-screen bg-[#000000] text-[#F4F4F5] flex flex-col antialiased selection:bg-[#FF0000] selection:text-white">
 
-  <!-- Navbar -->
-  <header class="border-b border-[#A6C8E2]/50 bg-[#F4F0E2]/90 backdrop-blur sticky top-0 z-40 transition-colors">
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- Executive Header Navbar -->
+  <header class="border-b border-[#830000]/60 bg-[#000000]/90 backdrop-blur sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
       
-      <!-- Logo & Brand Tag -->
+      <!-- Brand Logo & Persona Tag -->
       <div class="flex items-center space-x-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#619DC6] via-[#A6C8E2] to-[#F4BAA3] flex items-center justify-center shadow-md shadow-[#619DC6]/20 ring-1 ring-white/60">
-          <i data-lucide="shield-check" class="w-6 h-6 text-[#172533] font-bold"></i>
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF0000] via-[#BC0202] to-[#830000] flex items-center justify-center shadow-lg shadow-[#FF0000]/25 ring-1 ring-[#FF0000]/40">
+          <i data-lucide="shield-alert" class="w-6 h-6 text-white font-black"></i>
         </div>
         <div>
           <div class="flex items-center space-x-2">
-            <span class="text-xl font-extrabold tracking-tight text-[#172533]">LoanLens</span>
-            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#F4BAA3] text-[#2C1914] border border-[#E59B80] shadow-sm">
-              RBI KFS Auditor
+            <span class="text-xl font-black tracking-tight text-white font-heading">LoanLens</span>
+            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#830000]/60 text-[#FF0000] border border-[#BC0202] shadow-sm tracking-wider">
+              Senior Finance Manager
             </span>
           </div>
-          <p class="text-[10px] text-brand-textMuted font-medium hidden sm:block">Deterministic Financial Due Diligence</p>
+          <p class="text-[10px] text-[#A1A1AA] font-mono hidden sm:block">Deterministic Indian Loan & KFS Forensic Audit Engine</p>
         </div>
       </div>
       
-      <!-- Right Controls: API Key & Language -->
+      <!-- Controls: API Key & Language -->
       <div class="flex items-center space-x-2 sm:space-x-3">
-        <!-- API Key Status / Config Trigger -->
-        <button onclick="toggleKeyModal()" id="btn-api-key" class="text-xs px-3 py-1.5 rounded-xl border border-[#A6C8E2] bg-white hover:bg-[#A6C8E2]/15 text-brand-textPrimary font-semibold flex items-center space-x-1.5 transition-all shadow-sm">
-          <i data-lucide="key" class="w-3.5 h-3.5 text-[#619DC6]"></i>
+        <button onclick="toggleKeyModal()" id="btn-api-key" class="text-xs px-3 py-1.5 rounded-xl border border-[#830000] bg-[#0D0202] hover:border-[#BC0202] hover:bg-[#150303] text-white font-semibold flex items-center space-x-1.5 transition-all shadow-sm">
+          <i data-lucide="key" class="w-3.5 h-3.5 text-[#FF0000]"></i>
           <span id="api-key-status-text">OpenRouter API</span>
         </button>
 
         <!-- Language Switcher -->
-        <div class="flex bg-white/80 rounded-xl p-1 border border-[#A6C8E2]/60 shadow-sm">
-          <button onclick="setLanguage('en')" id="lang-en" class="px-2.5 py-1 text-xs font-bold rounded-lg transition-all bg-[#619DC6] text-white shadow-sm">English</button>
-          <button onclick="setLanguage('hi')" id="lang-hi" class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all text-brand-textSecondary hover:text-[#172533]">हिन्दी</button>
-          <button onclick="setLanguage('kn')" id="lang-kn" class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all text-brand-textSecondary hover:text-[#172533]">ಕನ್ನಡ</button>
+        <div class="flex bg-[#0D0202] rounded-xl p-1 border border-[#830000]/60 shadow-sm">
+          <button onclick="setLanguage('en')" id="lang-en" class="px-2.5 py-1 text-xs font-bold rounded-lg transition-all bg-[#BC0202] text-white shadow-sm">EN</button>
+          <button onclick="setLanguage('hi')" id="lang-hi" class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all text-[#A1A1AA] hover:text-white">हिन्दी</button>
+          <button onclick="setLanguage('kn')" id="lang-kn" class="px-2.5 py-1 text-xs font-semibold rounded-lg transition-all text-[#A1A1AA] hover:text-white">ಕನ್ನಡ</button>
         </div>
       </div>
     </div>
   </header>
 
   <!-- OpenRouter API Key Modal -->
-  <div id="api-key-modal" class="hidden fixed inset-0 z-50 bg-[#172533]/40 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white border border-[#A6C8E2] rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+  <div id="api-key-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-[#0D0202] border-2 border-[#BC0202] rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl shadow-[#FF0000]/20">
       <div class="flex items-center justify-between">
-        <h3 class="text-sm font-bold text-[#172533] flex items-center space-x-2">
-          <span class="w-7 h-7 rounded-lg bg-[#A6C8E2]/40 text-[#619DC6] flex items-center justify-center">
+        <h3 class="text-sm font-bold text-white flex items-center space-x-2 font-heading">
+          <span class="w-7 h-7 rounded-lg bg-[#830000]/60 text-[#FF0000] flex items-center justify-center">
             <i data-lucide="key" class="w-4 h-4"></i>
           </span>
           <span>OpenRouter AI Configuration</span>
         </h3>
-        <button onclick="toggleKeyModal()" class="w-7 h-7 rounded-full hover:bg-slate-100 flex items-center justify-center text-brand-textMuted hover:text-[#172533]">
+        <button onclick="toggleKeyModal()" class="w-7 h-7 rounded-full hover:bg-[#830000]/40 flex items-center justify-center text-[#A1A1AA] hover:text-white">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
       </div>
-      <p class="text-xs text-brand-textSecondary leading-relaxed">
-        LoanLens uses <strong>Qwen-2.5-72B</strong> via OpenRouter to extract tabular loan parameters from complex Indian bank PDFs. Your key is kept secure inside your local browser session.
+      <p class="text-xs text-[#A1A1AA] leading-relaxed">
+        LoanLens activates <strong>Qwen-2.5-72B</strong> via OpenRouter for high-accuracy parameter extraction from complex bank sanction letters and KFS tables. Key stored strictly in your browser session.
       </p>
       <div>
-        <label class="block text-xs font-semibold text-brand-textPrimary mb-1">OpenRouter API Key</label>
-        <input type="password" id="input-openrouter-key" placeholder="sk-or-v1-..." class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533] focus:outline-none focus:ring-2 focus:ring-[#619DC6]">
+        <label class="block text-xs font-bold text-white mb-1">OpenRouter API Key</label>
+        <input type="password" id="input-openrouter-key" placeholder="sk-or-v1-..." class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#FF0000] focus:ring-1 focus:ring-[#FF0000]">
       </div>
       <div class="flex justify-end space-x-2 pt-2">
-        <button onclick="toggleKeyModal()" class="px-4 py-2 text-xs font-semibold text-brand-textSecondary hover:text-[#172533]">Cancel</button>
-        <button onclick="saveApiKey()" class="px-4 py-2 text-xs font-bold rounded-xl bg-[#619DC6] text-white hover:bg-[#487EA4] shadow-md shadow-[#619DC6]/20 transition-all">Save API Key</button>
+        <button onclick="toggleKeyModal()" class="px-4 py-2 text-xs font-semibold text-[#A1A1AA] hover:text-white">Cancel</button>
+        <button onclick="saveApiKey()" class="px-5 py-2 text-xs font-black rounded-xl bg-gradient-to-r from-[#BC0202] to-[#FF0000] text-white hover:brightness-110 shadow-md shadow-[#FF0000]/30 transition-all">Save Key</button>
       </div>
     </div>
   </div>
 
   <!-- API Key Missing Notification Banner -->
-  <div id="api-key-warning" class="hidden bg-[#F4BAA3]/40 border-b border-[#F4BAA3] py-2 px-4 text-center">
-    <div class="max-w-7xl mx-auto flex items-center justify-center space-x-2 text-xs text-[#351B13]">
-      <i data-lucide="info" class="w-4 h-4 text-[#C95E38]"></i>
-      <span><strong>OpenRouter API Key not set:</strong> LoanLens is running in offline heuristic fallback mode. For AI-powered PDF extraction, <a href="javascript:toggleKeyModal()" class="underline font-bold text-[#172533]">add your OpenRouter key</a>.</span>
+  <div id="api-key-warning" class="hidden bg-[#830000]/30 border-b border-[#BC0202] py-2 px-4 text-center">
+    <div class="max-w-7xl mx-auto flex items-center justify-center space-x-2 text-xs text-[#F4F4F5]">
+      <i data-lucide="alert-circle" class="w-4 h-4 text-[#FF0000]"></i>
+      <span><strong>Offline Heuristic Mode Active:</strong> For full Qwen-2.5-72B extraction of multi-page bank PDFs, <a href="javascript:toggleKeyModal()" class="underline font-bold text-[#FF0000] hover:text-white">add your OpenRouter API key</a>.</span>
     </div>
   </div>
 
-  <!-- Main Content Area -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+  <!-- Main Content Body -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-8">
     
-    <!-- Hero / Headline -->
-    <div class="text-center max-w-3xl mx-auto mb-10">
-      <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-[#A6C8E2]/30 border border-[#A6C8E2] text-xs font-bold text-[#2A5577] mb-3 shadow-xs">
-        <i data-lucide="badge-percent" class="w-3.5 h-3.5 text-[#619DC6]"></i>
-        <span>True Cost of Borrowing & Fair Lending Verifier</span>
+    <!-- Hero / Executive Mission -->
+    <div class="text-center max-w-4xl mx-auto">
+      <div class="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-[#830000]/40 border border-[#BC0202] text-xs font-bold text-[#FF0000] mb-3 shadow-sm">
+        <i data-lucide="alert-octagon" class="w-3.5 h-3.5 animate-pulse"></i>
+        <span class="tracking-wide uppercase font-mono text-[11px]">Senior Risk Management & True APR Verification</span>
       </div>
-      <h1 class="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-[#172533] mb-3">
-        Uncover Hidden Charges in Your <span class="text-[#619DC6] underline decoration-[#F4BAA3] decoration-4 underline-offset-6">Sanction Letter</span>
+      <h1 class="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white mb-3 font-heading">
+        Expose Hidden Bank Charges & <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#FF0000] via-[#BC0202] to-[#FF4D4D]">True Borrowing Costs</span>
       </h1>
-      <p class="text-brand-textSecondary text-sm sm:text-base leading-relaxed">
-        Upload your Indian Bank Sanction Letter or Key Fact Statement (KFS). 
-        LoanLens extracts the fine print, audits statutory 18% GST, verifies stated vs. reducing EMIs, and calculates your <strong>True Effective APR</strong>.
+      <p class="text-[#A1A1AA] text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">
+        Banks market low headline rates while padding EMIs and slashing in-hand disbursals. 
+        LoanLens audits sanction letters, verifies 18% GST (SAC 9971), and calculates your <strong>True Effective APR</strong> with zero math hallucinations.
       </p>
     </div>
 
-    <!-- Navigation Segmented Tabs -->
-    <div class="flex justify-center mb-8">
-      <div class="inline-flex p-1.5 rounded-2xl bg-white border border-[#A6C8E2]/60 shadow-sm space-x-1 sm:space-x-2">
-        <button onclick="switchTab('audit')" id="tab-btn-audit" class="py-2.5 px-4 text-xs sm:text-sm font-bold rounded-xl transition-all bg-[#619DC6] text-white flex items-center space-x-2 shadow-sm">
-          <i data-lucide="file-text" class="w-4 h-4"></i>
+    <!-- Navigation Tabs -->
+    <div class="flex justify-center">
+      <div class="inline-flex p-1.5 rounded-2xl bg-[#0D0202] border border-[#830000] shadow-lg space-x-1 sm:space-x-2">
+        <button onclick="switchTab('audit')" id="tab-btn-audit" class="py-2.5 px-4 text-xs sm:text-sm font-black rounded-xl transition-all bg-gradient-to-r from-[#BC0202] to-[#FF0000] text-white flex items-center space-x-2 shadow-md shadow-[#FF0000]/20">
+          <i data-lucide="file-search" class="w-4 h-4"></i>
           <span>Sanction Letter Auditor</span>
         </button>
-        <button onclick="switchTab('manual')" id="tab-btn-manual" class="py-2.5 px-4 text-xs sm:text-sm font-semibold rounded-xl transition-all text-brand-textSecondary hover:text-[#172533] flex items-center space-x-2">
+        <button onclick="switchTab('simulator')" id="tab-btn-simulator" class="py-2.5 px-4 text-xs sm:text-sm font-semibold rounded-xl transition-all text-[#A1A1AA] hover:text-white flex items-center space-x-2">
+          <i data-lucide="sliders" class="w-4 h-4"></i>
+          <span>Live APR Stress-Test</span>
+        </button>
+        <button onclick="switchTab('manual')" id="tab-btn-manual" class="py-2.5 px-4 text-xs sm:text-sm font-semibold rounded-xl transition-all text-[#A1A1AA] hover:text-white flex items-center space-x-2">
           <i data-lucide="calculator" class="w-4 h-4"></i>
           <span>Direct Terms Inspector</span>
         </button>
-        <button onclick="switchTab('compare')" id="tab-btn-compare" class="py-2.5 px-4 text-xs sm:text-sm font-semibold rounded-xl transition-all text-brand-textSecondary hover:text-[#172533] flex items-center space-x-2">
+        <button onclick="switchTab('compare')" id="tab-btn-compare" class="py-2.5 px-4 text-xs sm:text-sm font-semibold rounded-xl transition-all text-[#A1A1AA] hover:text-white flex items-center space-x-2">
           <i data-lucide="scale" class="w-4 h-4"></i>
           <span>Compare 2 Loans</span>
         </button>
@@ -179,167 +200,237 @@
     </div>
 
     <!-- ===================================================================== -->
-    <!-- TAB 1: PDF UPLOAD & AUDIT -->
+    <!-- TAB 1: PDF UPLOAD & FORENSIC AUDIT -->
     <!-- ===================================================================== -->
     <section id="tab-audit" class="space-y-8">
+      
+      <!-- Interactive Quick-Load Preset Scenarios -->
+      <div class="max-w-4xl mx-auto">
+        <div class="flex items-center justify-between mb-2 px-1">
+          <span class="text-xs font-bold uppercase tracking-wider text-[#FF0000] flex items-center space-x-1.5 font-mono">
+            <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+            <span>Interactive 1-Click Bank Trap Presets:</span>
+          </span>
+          <span class="text-[11px] text-[#A1A1AA]">Click any scenario to audit immediately</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          
+          <!-- Preset 1: SBI Home Loan EMI Drainage (User Example) -->
+          <button onclick="loadScenario('sbi_homeloan')" class="text-left p-3.5 rounded-2xl bg-[#0D0202] border border-[#830000] hover:border-[#FF0000] hover:bg-[#150303] transition-all group shadow-sm">
+            <div class="flex items-center justify-between text-xs font-black text-white group-hover:text-[#FF0000]">
+              <span>SBI ₹45L Home Loan</span>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#830000]/60 text-[#FF0000]">TRAP</span>
+            </div>
+            <div class="mt-1 text-[11px] text-[#A1A1AA]">₹56,002 vs ₹48,495 EMI</div>
+            <div class="mt-1 text-[10px] font-bold text-[#FF0000]">₹13.5 Lakhs EMI Leakage ⚠️</div>
+          </button>
+
+          <!-- Preset 2: HDFC Personal Loan Insurance -->
+          <button onclick="loadScenario('hdfc_personal')" class="text-left p-3.5 rounded-2xl bg-[#0D0202] border border-[#830000] hover:border-[#FF0000] hover:bg-[#150303] transition-all group shadow-sm">
+            <div class="flex items-center justify-between text-xs font-black text-white group-hover:text-[#FF0000]">
+              <span>HDFC ₹5L Personal</span>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#830000]/60 text-[#FF0000]">TRAP</span>
+            </div>
+            <div class="mt-1 text-[11px] text-[#A1A1AA]">₹14,800 Insurance Bundled</div>
+            <div class="mt-1 text-[10px] font-bold text-[#FF0000]">11.5% Stated $\rightarrow$ 16.2% APR</div>
+          </button>
+
+          <!-- Preset 3: Bajaj Finance Flat Rate Scam -->
+          <button onclick="loadScenario('bajaj_flat')" class="text-left p-3.5 rounded-2xl bg-[#0D0202] border border-[#830000] hover:border-[#FF0000] hover:bg-[#150303] transition-all group shadow-sm">
+            <div class="flex items-center justify-between text-xs font-black text-white group-hover:text-[#FF0000]">
+              <span>Bajaj ₹3L Flat Rate</span>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#830000]/60 text-[#FF0000]">SCAM</span>
+            </div>
+            <div class="mt-1 text-[11px] text-[#A1A1AA]">Quoted 7.5% Flat Balance</div>
+            <div class="mt-1 text-[10px] font-bold text-[#FF0000]">Real Reducing APR: 14.2%</div>
+          </button>
+
+          <!-- Preset 4: Axis High Upfront Fee Trap -->
+          <button onclick="loadScenario('axis_auto')" class="text-left p-3.5 rounded-2xl bg-[#0D0202] border border-[#830000] hover:border-[#FF0000] hover:bg-[#150303] transition-all group shadow-sm">
+            <div class="flex items-center justify-between text-xs font-black text-white group-hover:text-[#FF0000]">
+              <span>Axis ₹8L Auto Loan</span>
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#830000]/60 text-[#FF0000]">FEE</span>
+            </div>
+            <div class="mt-1 text-[11px] text-[#A1A1AA]">Heavy Processing & 18% GST</div>
+            <div class="mt-1 text-[10px] font-bold text-[#FF0000]">Immediate Cash Depletion</div>
+          </button>
+
+        </div>
+      </div>
+
+      <!-- Upload Drop Zone Card -->
       <div class="max-w-2xl mx-auto">
-        <!-- Drag & Drop Card -->
-        <div id="drop-zone" class="border-2 border-dashed border-[#619DC6]/60 hover:border-[#619DC6] bg-white rounded-3xl p-8 sm:p-10 text-center transition-all cursor-pointer relative group shadow-sm hover:shadow-md">
+        <div id="drop-zone" class="border-2 border-dashed border-[#830000] hover:border-[#FF0000] bg-[#0D0202] rounded-3xl p-8 sm:p-10 text-center transition-all cursor-pointer relative group shadow-lg shadow-black">
           <input type="file" id="pdf-input" accept=".pdf" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleFileSelect(event)">
-          <div class="w-16 h-16 rounded-2xl bg-[#A6C8E2]/30 text-[#619DC6] flex items-center justify-center mx-auto mb-4 group-hover:scale-105 group-hover:bg-[#619DC6] group-hover:text-white transition-all shadow-sm">
+          <div class="w-16 h-16 rounded-2xl bg-[#830000]/30 text-[#FF0000] flex items-center justify-center mx-auto mb-4 group-hover:scale-105 group-hover:bg-[#BC0202] group-hover:text-white transition-all shadow-md">
             <i data-lucide="upload-cloud" class="w-8 h-8"></i>
           </div>
-          <h3 class="text-base font-bold text-[#172533] mb-1">Upload Bank Sanction Letter or KFS (PDF)</h3>
-          <p class="text-xs text-brand-textSecondary mb-4">Compatible with SBI, HDFC, ICICI, Axis, Bajaj Finance, and all Indian lenders</p>
-          <span class="inline-flex items-center px-5 py-2.5 rounded-xl text-xs font-bold bg-[#619DC6] text-white group-hover:bg-[#487EA4] transition-colors shadow-md shadow-[#619DC6]/20">
-            Select PDF File
+          <h3 class="text-base font-black text-white mb-1 font-heading">Drop Bank Sanction Letter or KFS (PDF)</h3>
+          <p class="text-xs text-[#A1A1AA] mb-4">Supports SBI, HDFC, ICICI, Axis, Bajaj Finance, and all Indian Bank/NBFC letters</p>
+          <span class="inline-flex items-center px-5 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-[#BC0202] to-[#FF0000] text-white group-hover:brightness-110 transition-all shadow-md shadow-[#FF0000]/30">
+            Browse Sanction PDF
           </span>
-          <div id="selected-file-name" class="mt-4 text-xs text-[#2A5577] font-bold bg-[#A6C8E2]/25 border border-[#A6C8E2] py-1.5 px-3 rounded-lg inline-block hidden"></div>
+          <div id="selected-file-name" class="mt-4 text-xs text-[#FF0000] font-mono font-bold bg-[#830000]/30 border border-[#BC0202] py-1.5 px-3 rounded-lg inline-block hidden"></div>
         </div>
 
         <!-- Action Row -->
         <div class="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <button onclick="loadSampleSanctionLetter()" class="text-xs font-semibold text-[#2C1914] bg-[#F4BAA3] hover:bg-[#E59B80] border border-[#E59B80] px-3.5 py-2 rounded-xl transition-all flex items-center space-x-1.5 shadow-xs">
-            <i data-lucide="file-check" class="w-3.5 h-3.5 text-[#2C1914]"></i>
-            <span>Load Sample Bank KFS (Demo)</span>
+          <button onclick="loadSampleSanctionLetter()" class="text-xs font-bold text-[#F4F4F5] bg-[#0D0202] hover:bg-[#830000]/40 border border-[#830000] hover:border-[#BC0202] px-3.5 py-2 rounded-xl transition-all flex items-center space-x-1.5 shadow-sm">
+            <i data-lucide="file-code" class="w-3.5 h-3.5 text-[#FF0000]"></i>
+            <span>Load Default Bank KFS File</span>
           </button>
-          <button id="btn-run-audit" onclick="submitPdfAudit()" disabled class="w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-bold bg-[#D3E3EE] text-brand-textMuted cursor-not-allowed transition-all flex items-center justify-center space-x-2">
+          <button id="btn-run-audit" onclick="submitPdfAudit()" disabled class="w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-black bg-[#1A0505] text-[#71717A] cursor-not-allowed transition-all flex items-center justify-center space-x-2">
             <i data-lucide="cpu" class="w-4 h-4"></i>
-            <span>Run Deterministic Audit</span>
+            <span>Run Forensic Audit</span>
           </button>
         </div>
       </div>
 
       <!-- Loading State -->
-      <div id="audit-loading" class="hidden text-center py-12 max-w-md mx-auto bg-white rounded-3xl border border-[#A6C8E2]/60 p-8 shadow-sm">
-        <div class="w-12 h-12 border-4 border-[#A6C8E2] border-t-[#619DC6] rounded-full animate-spin mx-auto mb-4"></div>
-        <h4 class="text-sm font-bold text-[#172533] mb-1">Auditing Loan Document...</h4>
-        <p id="loading-step-text" class="text-xs text-brand-textSecondary">Extracting tables & calculating true amortization APR...</p>
+      <div id="audit-loading" class="hidden text-center py-12 max-w-md mx-auto bg-[#0D0202] rounded-3xl border border-[#BC0202] p-8 shadow-xl">
+        <div class="w-12 h-12 border-4 border-[#830000] border-t-[#FF0000] rounded-full animate-spin mx-auto mb-4"></div>
+        <h4 class="text-sm font-black text-white mb-1 font-heading">Executing Institutional Financial Audit...</h4>
+        <p id="loading-step-text" class="text-xs text-[#A1A1AA]">Extracting loan parameters & calculating True APR via Newton-Raphson IRR...</p>
       </div>
 
       <!-- Audit Results Container -->
       <div id="audit-results" class="hidden space-y-8">
         
         <!-- Status Bar -->
-        <div class="flex flex-wrap items-center justify-between p-4 bg-white border border-[#A6C8E2]/60 rounded-2xl gap-3 shadow-xs">
+        <div class="flex flex-wrap items-center justify-between p-4 bg-[#0D0202] border border-[#830000] rounded-2xl gap-3 shadow-md">
           <div class="flex items-center space-x-3">
-            <div class="w-9 h-9 rounded-xl bg-[#A6C8E2]/30 flex items-center justify-center text-[#619DC6] font-bold">
-              <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+            <div class="w-9 h-9 rounded-xl bg-[#830000]/40 flex items-center justify-center text-[#FF0000] font-black">
+              <i data-lucide="check-circle" class="w-5 h-5"></i>
             </div>
             <div>
-              <div class="text-xs font-bold text-[#172533]" id="extracted-lender-name">Indian Bank</div>
-              <div class="text-[11px] text-brand-textSecondary" id="extraction-badge">Extracted via AI</div>
+              <div class="text-xs font-black text-white font-heading" id="extracted-lender-name">Indian Bank</div>
+              <div class="text-[11px] text-[#A1A1AA] font-mono" id="extraction-badge">Extracted via AI</div>
             </div>
           </div>
-          <button onclick="toggleExtractedText()" class="text-xs font-semibold text-[#172533] hover:text-[#619DC6] px-3.5 py-1.5 rounded-xl bg-[#FAF7EE] border border-[#A6C8E2]/60 hover:border-[#619DC6] flex items-center space-x-1.5 transition-colors">
-            <i data-lucide="eye" class="w-3.5 h-3.5 text-[#619DC6]"></i>
-            <span>Inspect Extracted Text & Tables</span>
-          </button>
-        </div>
-
-        <!-- Collapsible Raw Extracted Text Drawer -->
-        <div id="raw-text-drawer" class="hidden bg-[#FAF7EE] border border-[#A6C8E2] rounded-3xl p-5 space-y-2 shadow-inner">
-          <div class="flex justify-between items-center text-xs font-bold text-brand-textSecondary">
-            <span class="flex items-center space-x-1.5">
-              <i data-lucide="terminal" class="w-3.5 h-3.5 text-[#619DC6]"></i>
-              <span>RAW DOCUMENT TEXT EXTRACTED:</span>
-            </span>
-            <span class="text-[10px] text-brand-textMuted font-medium">Table formatting & cell alignment preserved</span>
+          <div class="flex items-center space-x-2">
+            <button onclick="toggleExtractedText()" class="text-xs font-bold text-white px-3.5 py-1.5 rounded-xl bg-[#150303] border border-[#830000] hover:border-[#FF0000] flex items-center space-x-1.5 transition-colors">
+              <i data-lucide="terminal" class="w-3.5 h-3.5 text-[#FF0000]"></i>
+              <span>Inspect Raw Extracted Text</span>
+            </button>
           </div>
-          <pre id="raw-extracted-text-content" class="text-[11px] text-[#172533] bg-white p-4 rounded-2xl max-h-72 overflow-y-auto whitespace-pre-wrap leading-relaxed border border-[#A6C8E2]/50 shadow-xs"></pre>
         </div>
 
-        <!-- 4 Top Metric Cards -->
+        <!-- Collapsible Interactive Raw Text Drawer with Search Filter -->
+        <div id="raw-text-drawer" class="hidden bg-[#070101] border border-[#830000] rounded-3xl p-5 space-y-3 shadow-2xl">
+          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs font-bold text-[#A1A1AA]">
+            <span class="flex items-center space-x-1.5 text-white font-mono">
+              <i data-lucide="file-text" class="w-4 h-4 text-[#FF0000]"></i>
+              <span>RAW OCR / TEXT PREVIEW</span>
+            </span>
+            <!-- Interactive Keyword Filter -->
+            <div class="w-full sm:w-64">
+              <input type="text" id="raw-text-search" placeholder="Search keywords (e.g. fee, gst, emi)..." oninput="filterRawText()" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-1 text-xs text-white placeholder-[#71717A] focus:outline-none focus:border-[#FF0000]">
+            </div>
+          </div>
+          <pre id="raw-extracted-text-content" class="text-[11px] text-[#E4E4E7] bg-[#000000] p-4 rounded-2xl max-h-72 overflow-y-auto whitespace-pre-wrap leading-relaxed border border-[#830000]/60 font-mono"></pre>
+        </div>
+
+        <!-- Top 4 Metrics Cards -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
           <!-- Card 1: Net Disbursed Amount -->
-          <div class="bg-white border border-[#A6C8E2] rounded-3xl p-5 shadow-xs relative overflow-hidden">
+          <div class="bg-[#0D0202] border border-[#830000] hover:border-[#BC0202] rounded-3xl p-5 shadow-lg relative overflow-hidden transition-all">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-semibold text-brand-textSecondary">Net In-Hand Disbursal</span>
-              <div class="w-7 h-7 rounded-lg bg-[#A6C8E2]/30 text-[#619DC6] flex items-center justify-center">
+              <span class="text-xs font-bold text-[#A1A1AA] uppercase tracking-wider font-mono">Net In-Hand Disbursal</span>
+              <div class="w-7 h-7 rounded-lg bg-[#830000]/40 text-[#FF0000] flex items-center justify-center">
                 <i data-lucide="wallet" class="w-4 h-4"></i>
               </div>
             </div>
-            <div class="text-2xl font-black text-[#172533]" id="metric-net-disbursed">₹0</div>
-            <div class="mt-2 text-xs text-brand-textSecondary flex items-center justify-between pt-1 border-t border-slate-100">
-              <span>Sanctioned: <strong id="metric-principal" class="text-[#172533]">₹0</strong></span>
-              <span id="metric-deduction-badge" class="font-bold text-[#A43B25] bg-[#F4BAA3]/40 px-2 py-0.5 rounded-md">-₹0</span>
+            <div class="text-2xl font-black text-white font-heading" id="metric-net-disbursed">₹0</div>
+            <div class="mt-2 text-xs text-[#A1A1AA] flex items-center justify-between pt-2 border-t border-[#830000]/40">
+              <span>Sanctioned: <strong id="metric-principal" class="text-white">₹0</strong></span>
+              <span id="metric-deduction-badge" class="font-bold text-[#FF0000] bg-[#830000]/40 px-2 py-0.5 rounded-md font-mono">-₹0</span>
             </div>
           </div>
 
-          <!-- Card 2: True APR vs Stated Rate -->
-          <div class="bg-white border-2 border-[#F4BAA3] rounded-3xl p-5 shadow-xs relative overflow-hidden bg-gradient-to-b from-[#F4BAA3]/10 to-transparent">
+          <!-- Card 2: Stated Rate vs True APR -->
+          <div class="bg-[#0D0202] border-2 border-[#BC0202] rounded-3xl p-5 shadow-xl relative overflow-hidden bg-gradient-to-b from-[#830000]/30 to-transparent red-glow">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-semibold text-brand-textSecondary">True Effective APR</span>
-              <div class="w-7 h-7 rounded-lg bg-[#F4BAA3] text-[#2C1914] flex items-center justify-center">
-                <i data-lucide="percent" class="w-4 h-4"></i>
+              <span class="text-xs font-bold text-[#FF0000] uppercase tracking-wider font-mono">True Effective APR</span>
+              <div class="w-7 h-7 rounded-lg bg-[#FF0000] text-black flex items-center justify-center">
+                <i data-lucide="percent" class="w-4 h-4 font-black"></i>
               </div>
             </div>
-            <div class="text-2xl font-black text-[#C04C25]" id="metric-true-apr">0.00%</div>
-            <div class="mt-2 text-xs text-brand-textSecondary flex items-center justify-between pt-1 border-t border-[#F4BAA3]/40">
-              <span>Stated: <strong id="metric-stated-rate" class="text-[#172533]">0.00%</strong></span>
-              <span id="metric-apr-spread" class="font-bold text-[#C04C25]">+0.00% spread</span>
+            <div class="text-2xl font-black text-[#FF0000] font-heading" id="metric-true-apr">0.00%</div>
+            <div class="mt-2 text-xs text-[#A1A1AA] flex items-center justify-between pt-2 border-t border-[#830000]/60">
+              <span>Stated: <strong id="metric-stated-rate" class="text-white">0.00%</strong></span>
+              <span id="metric-apr-spread" class="font-black text-[#FF0000] font-mono">+0.00% spread</span>
             </div>
           </div>
 
           <!-- Card 3: Upfront Fees & GST -->
-          <div class="bg-white border border-[#A6C8E2] rounded-3xl p-5 shadow-xs relative overflow-hidden">
+          <div class="bg-[#0D0202] border border-[#830000] hover:border-[#BC0202] rounded-3xl p-5 shadow-lg relative overflow-hidden transition-all">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-semibold text-brand-textSecondary">Fees & 18% GST</span>
-              <div class="w-7 h-7 rounded-lg bg-[#A6C8E2]/30 text-[#619DC6] flex items-center justify-center">
+              <span class="text-xs font-bold text-[#A1A1AA] uppercase tracking-wider font-mono">Fees & 18% GST</span>
+              <div class="w-7 h-7 rounded-lg bg-[#830000]/40 text-[#FF0000] flex items-center justify-center">
                 <i data-lucide="receipt" class="w-4 h-4"></i>
               </div>
             </div>
-            <div class="text-2xl font-black text-[#172533]" id="metric-fees-gst">₹0</div>
-            <div class="mt-2 text-xs text-brand-textSecondary flex items-center justify-between pt-1 border-t border-slate-100">
-              <span>18% GST: <strong id="metric-gst-only" class="text-[#2A5577]">₹0</strong></span>
-              <span>Insurance: <strong id="metric-insurance" class="text-[#172533]">₹0</strong></span>
+            <div class="text-2xl font-black text-white font-heading" id="metric-fees-gst">₹0</div>
+            <div class="mt-2 text-xs text-[#A1A1AA] flex items-center justify-between pt-2 border-t border-[#830000]/40">
+              <span>18% GST: <strong id="metric-gst-only" class="text-white font-mono">₹0</strong></span>
+              <span>Insurance: <strong id="metric-insurance" class="text-white font-mono">₹0</strong></span>
             </div>
           </div>
 
           <!-- Card 4: RBI Compliance Score -->
-          <div class="bg-white border border-[#A6C8E2] rounded-3xl p-5 shadow-xs relative overflow-hidden">
+          <div class="bg-[#0D0202] border border-[#830000] hover:border-[#BC0202] rounded-3xl p-5 shadow-lg relative overflow-hidden transition-all">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-semibold text-brand-textSecondary">RBI Compliance</span>
-              <div class="w-7 h-7 rounded-lg bg-[#619DC6]/20 text-[#619DC6] flex items-center justify-center">
-                <i data-lucide="shield" class="w-4 h-4"></i>
+              <span class="text-xs font-bold text-[#A1A1AA] uppercase tracking-wider font-mono">RBI Fair Lending</span>
+              <div class="w-7 h-7 rounded-lg bg-[#830000]/40 text-[#FF0000] flex items-center justify-center">
+                <i data-lucide="shield-check" class="w-4 h-4"></i>
               </div>
             </div>
-            <div class="text-2xl font-black text-[#619DC6]" id="metric-rbi-score">100 / 100</div>
-            <div class="mt-2 text-xs font-semibold text-brand-textSecondary pt-1 border-t border-slate-100" id="metric-score-label">Fair lending compliant</div>
+            <div class="text-2xl font-black text-white font-heading" id="metric-rbi-score">100 / 100</div>
+            <div class="mt-2 text-xs font-semibold text-[#A1A1AA] pt-2 border-t border-[#830000]/40" id="metric-score-label">Fair lending compliant</div>
           </div>
 
         </div>
 
-        <!-- Discrepancies & Flagged Traps Card -->
-        <div class="bg-white border border-[#A6C8E2]/80 rounded-3xl p-6 shadow-xs space-y-4">
-          <div class="flex items-center justify-between pb-3 border-b border-[#A6C8E2]/40">
-            <h3 class="text-base font-bold text-[#172533] flex items-center space-x-2">
-              <span class="w-7 h-7 rounded-lg bg-[#F4BAA3] text-[#2C1914] flex items-center justify-center">
+        <!-- Discrepancies & Flagged Regulatory Findings -->
+        <div class="bg-[#0D0202] border border-[#830000] rounded-3xl p-6 shadow-xl space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-[#830000]/60">
+            <h3 class="text-base font-black text-white flex items-center space-x-2 font-heading">
+              <span class="w-7 h-7 rounded-lg bg-[#FF0000] text-black flex items-center justify-center font-black">
                 <i data-lucide="alert-triangle" class="w-4 h-4"></i>
               </span>
-              <span>Auditor Discrepancies & Regulatory Findings</span>
+              <span>Auditor Discrepancies & Predatory Clauses</span>
             </h3>
-            <span id="discrepancy-count" class="text-xs font-bold px-2.5 py-1 rounded-full bg-[#FAF7EE] border border-[#A6C8E2] text-brand-textPrimary">0 Findings</span>
+            <span id="discrepancy-count" class="text-xs font-black px-2.5 py-1 rounded-full bg-[#150303] border border-[#BC0202] text-[#FF0000] font-mono">0 Findings</span>
           </div>
           <div id="discrepancy-list" class="space-y-3">
-            <!-- Discrepancy cards injected here -->
+            <!-- Discrepancies populated dynamically -->
           </div>
         </div>
 
-        <!-- Multilingual Borrower Guide & Checklist -->
-        <div class="bg-white border border-[#A6C8E2]/80 rounded-3xl p-6 sm:p-8 shadow-xs space-y-4">
-          <div class="flex items-center justify-between pb-3 border-b border-[#A6C8E2]/40">
-            <h3 class="text-base font-bold text-[#172533] flex items-center space-x-2">
-              <span class="w-7 h-7 rounded-lg bg-[#619DC6] text-white flex items-center justify-center">
-                <i data-lucide="sparkles" class="w-4 h-4"></i>
-              </span>
-              <span>Borrower Explanation & Actionable Checklist</span>
-            </h3>
-            <span id="current-lang-badge" class="text-xs font-bold px-2.5 py-1 rounded-md bg-[#A6C8E2]/30 text-[#2A5577] uppercase font-mono">English</span>
+        <!-- Senior Finance Manager Executive Verdict & Playbook -->
+        <div class="bg-[#0D0202] border-2 border-[#830000] rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-[#830000]/60 gap-3">
+            <div class="flex items-center space-x-3">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-r from-[#BC0202] to-[#FF0000] text-white flex items-center justify-center font-black shadow-md shadow-[#FF0000]/30">
+                <i data-lucide="award" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h3 class="text-base font-black text-white font-heading">Senior Finance Manager Executive Audit</h3>
+                <p class="text-[11px] text-[#A1A1AA] font-mono">Treasury Risk Verdict & Institutional Negotiation Playbook</p>
+              </div>
+            </div>
+            
+            <!-- Interactive Copy Negotiation Script Button -->
+            <button onclick="copyNegotiationScript()" class="px-4 py-2 rounded-xl bg-[#150303] border border-[#BC0202] hover:bg-[#830000]/40 text-xs font-bold text-white flex items-center space-x-2 transition-all shadow-sm">
+              <i data-lucide="copy" class="w-4 h-4 text-[#FF0000]"></i>
+              <span id="btn-copy-script-text">Copy Script for WhatsApp / Email</span>
+            </button>
           </div>
-          <div id="explanation-content" class="text-sm text-brand-textPrimary leading-relaxed space-y-4 font-normal">
-            <!-- Markdown content rendered here -->
+
+          <!-- Explanation Markdown -->
+          <div id="explanation-content" class="text-sm text-[#E4E4E7] leading-relaxed space-y-4 font-normal">
+            <!-- Rendered markdown explanation -->
           </div>
         </div>
 
@@ -347,150 +438,287 @@
     </section>
 
     <!-- ===================================================================== -->
-    <!-- TAB 2: MANUAL TERMS INSPECTOR -->
+    <!-- TAB 2: INTERACTIVE LIVE APR STRESS-TEST & LOAN SIMULATOR -->
+    <!-- ===================================================================== -->
+    <section id="tab-simulator" class="hidden space-y-8">
+      <div class="max-w-4xl mx-auto bg-[#0D0202] border-2 border-[#830000] rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+        
+        <div class="pb-4 border-b border-[#830000]/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 class="text-lg font-black text-white font-heading flex items-center space-x-2">
+              <span class="w-7 h-7 rounded-lg bg-[#FF0000] text-black flex items-center justify-center">
+                <i data-lucide="sliders" class="w-4 h-4"></i>
+              </span>
+              <span>Interactive Real-Time APR & EMI Stress-Test Simulator</span>
+            </h3>
+            <p class="text-xs text-[#A1A1AA] mt-1 font-mono">Drag the sliders below to see live compounding effects, monthly EMIs, and hidden fee APR inflation.</p>
+          </div>
+          <span class="text-xs font-mono font-bold px-3 py-1 rounded-full bg-[#150303] text-[#FF0000] border border-[#BC0202] self-start sm:self-auto">
+            LIVE RECALCULATION
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          
+          <!-- Left Column: Interactive Sliders -->
+          <div class="space-y-5">
+            
+            <!-- Slider 1: Principal -->
+            <div>
+              <div class="flex justify-between text-xs font-bold mb-1.5">
+                <span class="text-[#A1A1AA]">Sanctioned Principal:</span>
+                <span class="text-white font-mono text-sm" id="sim-disp-principal">₹5,00,000</span>
+              </div>
+              <input type="range" id="sim-principal" min="100000" max="10000000" step="50000" value="500000" oninput="runLiveSimulator()" class="w-full h-2 bg-[#1A0505] rounded-lg cursor-pointer">
+              <div class="flex justify-between text-[10px] text-[#71717A] mt-1 font-mono">
+                <span>₹1 Lakh</span>
+                <span>₹50 Lakhs</span>
+                <span>₹1 Crore</span>
+              </div>
+            </div>
+
+            <!-- Slider 2: Stated Rate -->
+            <div>
+              <div class="flex justify-between text-xs font-bold mb-1.5">
+                <span class="text-[#A1A1AA]">Stated Interest Rate (ROI):</span>
+                <span class="text-[#FF0000] font-mono text-sm font-black" id="sim-disp-rate">11.50%</span>
+              </div>
+              <input type="range" id="sim-rate" min="5" max="24" step="0.1" value="11.5" oninput="runLiveSimulator()" class="w-full h-2 bg-[#1A0505] rounded-lg cursor-pointer">
+              <div class="flex justify-between text-[10px] text-[#71717A] mt-1 font-mono">
+                <span>5.0%</span>
+                <span>12.0%</span>
+                <span>24.0%</span>
+              </div>
+            </div>
+
+            <!-- Slider 3: Tenure Months -->
+            <div>
+              <div class="flex justify-between text-xs font-bold mb-1.5">
+                <span class="text-[#A1A1AA]">Loan Tenure:</span>
+                <span class="text-white font-mono text-sm" id="sim-disp-tenure">36 Months (3.0 Yrs)</span>
+              </div>
+              <input type="range" id="sim-tenure" min="6" max="360" step="6" value="36" oninput="runLiveSimulator()" class="w-full h-2 bg-[#1A0505] rounded-lg cursor-pointer">
+              <div class="flex justify-between text-[10px] text-[#71717A] mt-1 font-mono">
+                <span>6 M</span>
+                <span>120 M (10Y)</span>
+                <span>360 M (30Y)</span>
+              </div>
+            </div>
+
+            <!-- Slider 4: Upfront Fees + Insurance -->
+            <div>
+              <div class="flex justify-between text-xs font-bold mb-1.5">
+                <span class="text-[#A1A1AA]">Upfront Fees + Insurance:</span>
+                <span class="text-[#FF0000] font-mono text-sm" id="sim-disp-fees">₹23,500</span>
+              </div>
+              <input type="range" id="sim-fees" min="0" max="150000" step="1000" value="23500" oninput="runLiveSimulator()" class="w-full h-2 bg-[#1A0505] rounded-lg cursor-pointer">
+              <div class="flex justify-between text-[10px] text-[#71717A] mt-1 font-mono">
+                <span>₹0 (Zero Fees)</span>
+                <span>₹75,000</span>
+                <span>₹1,50,000</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Right Column: Live Output & Dynamic Cost Breakdown Bar -->
+          <div class="bg-[#070101] border border-[#830000] rounded-2xl p-5 space-y-4 flex flex-col justify-between">
+            <div>
+              <div class="text-xs font-mono font-bold text-[#A1A1AA] uppercase tracking-wider mb-3">Live Recalculated Output:</div>
+              <div class="space-y-3">
+                <div class="flex justify-between items-center py-2 border-b border-[#830000]/40">
+                  <span class="text-xs text-[#A1A1AA]">True Monthly Reducing EMI:</span>
+                  <span class="text-base font-black text-white font-mono" id="sim-res-emi">₹16,488 / mo</span>
+                </div>
+                <div class="flex justify-between items-center py-2 border-b border-[#830000]/40">
+                  <span class="text-xs text-[#A1A1AA]">True Effective APR (IRR):</span>
+                  <span class="text-base font-black text-[#FF0000] font-mono" id="sim-res-apr">16.20%</span>
+                </div>
+                <div class="flex justify-between items-center py-2 border-b border-[#830000]/40">
+                  <span class="text-xs text-[#A1A1AA]">Net Cash In-Hand:</span>
+                  <span class="text-sm font-bold text-white font-mono" id="sim-res-disbursed">₹4,76,500</span>
+                </div>
+                <div class="flex justify-between items-center py-2 border-b border-[#830000]/40">
+                  <span class="text-xs text-[#A1A1AA]">Lifetime Interest Payable:</span>
+                  <span class="text-sm font-bold text-white font-mono" id="sim-res-interest">₹93,568</span>
+                </div>
+                <div class="flex justify-between items-center py-2">
+                  <span class="text-xs text-[#A1A1AA]">Total Outflow over Tenure:</span>
+                  <span class="text-sm font-black text-[#FF0000] font-mono" id="sim-res-total">₹6,17,068</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dynamic Visual Cost Bar -->
+            <div>
+              <div class="flex justify-between text-[11px] font-mono font-bold text-[#A1A1AA] mb-1.5">
+                <span>Cost Composition Breakdown:</span>
+                <span id="sim-bar-legend" class="text-white">Principal / Interest / Fees</span>
+              </div>
+              <div class="w-full h-4 rounded-full bg-[#1A0505] overflow-hidden flex border border-[#830000]">
+                <div id="sim-bar-principal" class="bg-white transition-all duration-300" style="width: 70%;" title="Net Disbursal"></div>
+                <div id="sim-bar-interest" class="bg-[#BC0202] transition-all duration-300" style="width: 25%;" title="Interest Cost"></div>
+                <div id="sim-bar-fees" class="bg-[#FF0000] transition-all duration-300" style="width: 5%;" title="Upfront Fees & Taxes"></div>
+              </div>
+              <div class="flex justify-between text-[10px] text-[#A1A1AA] mt-1.5 font-mono">
+                <span class="flex items-center space-x-1"><span class="w-2 h-2 rounded-full bg-white inline-block"></span> <span>Net In-Hand</span></span>
+                <span class="flex items-center space-x-1"><span class="w-2 h-2 rounded-full bg-[#BC0202] inline-block"></span> <span>Interest</span></span>
+                <span class="flex items-center space-x-1"><span class="w-2 h-2 rounded-full bg-[#FF0000] inline-block"></span> <span>Upfront Deductions</span></span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 3: DIRECT TERMS INSPECTOR (MANUAL) -->
     <!-- ===================================================================== -->
     <section id="tab-manual" class="hidden space-y-8">
-      <div class="max-w-2xl mx-auto bg-white border border-[#A6C8E2] rounded-3xl p-6 sm:p-8 shadow-sm">
-        <div class="mb-5 pb-3 border-b border-[#A6C8E2]/40">
-          <h3 class="text-base font-bold text-[#172533]">Direct Loan Terms Calculator</h3>
-          <p class="text-xs text-brand-textSecondary mt-0.5">Test any loan quote or sanction letter parameters directly without uploading a PDF.</p>
+      <div class="max-w-2xl mx-auto bg-[#0D0202] border border-[#830000] rounded-3xl p-6 sm:p-8 shadow-2xl">
+        <div class="mb-5 pb-3 border-b border-[#830000]/60">
+          <h3 class="text-base font-black text-white font-heading">Direct Terms Auditor</h3>
+          <p class="text-xs text-[#A1A1AA] mt-0.5 font-mono">Audit any sanction letter numbers manually without uploading a PDF.</p>
         </div>
         <form id="manual-form" onsubmit="submitManualAudit(event)" class="space-y-4">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label class="block text-xs font-bold text-brand-textPrimary mb-1">Lender Name</label>
-              <input type="text" id="m-lender" value="Bajaj Finance" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-sm text-[#172533] focus:outline-none focus:ring-2 focus:ring-[#619DC6]">
+              <label class="block text-xs font-bold text-white mb-1">Lender Name</label>
+              <input type="text" id="m-lender" value="State Bank of India" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FF0000]">
             </div>
             <div>
-              <label class="block text-xs font-bold text-brand-textPrimary mb-1">Principal Amount (₹)</label>
-              <input type="number" id="m-principal" value="300000" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-sm text-[#172533] focus:outline-none focus:ring-2 focus:ring-[#619DC6]" required>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-brand-textPrimary mb-1">Stated ROI (%)</label>
-              <input type="number" step="0.01" id="m-rate" value="12.5" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-sm text-[#172533] focus:outline-none focus:ring-2 focus:ring-[#619DC6]" required>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-brand-textPrimary mb-1">Tenure (Months)</label>
-              <input type="number" id="m-tenure" value="36" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-sm text-[#172533] focus:outline-none focus:ring-2 focus:ring-[#619DC6]" required>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-brand-textPrimary mb-1">Stated EMI (Optional ₹)</label>
-              <input type="number" step="0.01" id="m-stated-emi" placeholder="Leave empty for calc" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-sm text-[#172533] focus:outline-none focus:ring-2 focus:ring-[#619DC6]">
+              <label class="block text-xs font-bold text-white mb-1">Sanctioned Principal (₹)</label>
+              <input type="number" id="m-principal" value="4500000" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FF0000]" required>
             </div>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label class="block text-xs font-bold text-brand-textPrimary mb-1">Processing Fee (₹)</label>
-              <input type="number" id="m-fee" value="4500" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-sm text-[#172533] focus:outline-none focus:ring-2 focus:ring-[#619DC6]">
+              <label class="block text-xs font-bold text-white mb-1">Stated ROI (%)</label>
+              <input type="number" step="0.01" id="m-rate" value="10.05" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FF0000]" required>
             </div>
             <div>
-              <label class="block text-xs font-bold text-brand-textPrimary mb-1">Documentation (₹)</label>
-              <input type="number" id="m-doc" value="750" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-sm text-[#172533] focus:outline-none focus:ring-2 focus:ring-[#619DC6]">
+              <label class="block text-xs font-bold text-white mb-1">Tenure (Months)</label>
+              <input type="number" id="m-tenure" value="180" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FF0000]" required>
             </div>
             <div>
-              <label class="block text-xs font-bold text-brand-textPrimary mb-1">Bundled Insurance (₹)</label>
-              <input type="number" id="m-insurance" value="6800" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-sm text-[#172533] focus:outline-none focus:ring-2 focus:ring-[#619DC6]">
+              <label class="block text-xs font-bold text-white mb-1">Stated EMI (₹)</label>
+              <input type="number" step="0.01" id="m-stated-emi" value="56002" placeholder="Leave empty for calc" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FF0000]">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-white mb-1">Processing Fee (₹)</label>
+              <input type="number" id="m-fee" value="47200" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FF0000]">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-white mb-1">Documentation (₹)</label>
+              <input type="number" id="m-doc" value="0" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FF0000]">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-white mb-1">Bundled Insurance (₹)</label>
+              <input type="number" id="m-insurance" value="0" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-[#FF0000]">
             </div>
           </div>
 
           <div class="flex items-center space-x-2 pt-1">
-            <input type="checkbox" id="m-penalty" class="rounded bg-[#FAF7EE] border-[#A6C8E2] text-[#619DC6] focus:ring-[#619DC6] h-4 w-4">
-            <label for="m-penalty" class="text-xs font-semibold text-brand-textSecondary">Sanction letter contains foreclosure / pre-payment penalty clause</label>
+            <input type="checkbox" id="m-penalty" class="rounded bg-[#000000] border-[#830000] text-[#FF0000] focus:ring-[#FF0000] h-4 w-4">
+            <label for="m-penalty" class="text-xs font-semibold text-[#A1A1AA]">Sanction letter specifies early foreclosure / pre-payment penalty</label>
           </div>
 
-          <button type="submit" class="w-full py-3 rounded-xl bg-[#619DC6] text-white text-xs font-bold hover:bg-[#487EA4] transition-all shadow-md shadow-[#619DC6]/20">
-            Run Deterministic Audit
+          <button type="submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-[#BC0202] to-[#FF0000] text-white text-xs font-black hover:brightness-110 transition-all shadow-lg shadow-[#FF0000]/25">
+            Audit Parameters Deterministically
           </button>
         </form>
       </div>
     </section>
 
     <!-- ===================================================================== -->
-    <!-- TAB 3: LOAN COMPARISON MATRIX -->
+    <!-- TAB 4: LOAN COMPARISON MATRIX -->
     <!-- ===================================================================== -->
     <section id="tab-compare" class="hidden space-y-8">
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         <!-- Loan A Card -->
-        <div class="bg-white border border-[#A6C8E2] rounded-3xl p-6 shadow-xs">
-          <div class="flex items-center justify-between mb-4 pb-2 border-b border-[#A6C8E2]/40">
-            <h4 class="text-sm font-bold text-[#172533] flex items-center space-x-2">
-              <span class="w-6 h-6 rounded-lg bg-[#619DC6] text-white flex items-center justify-center text-xs font-black">A</span>
+        <div class="bg-[#0D0202] border border-[#830000] rounded-3xl p-6 shadow-xl">
+          <div class="flex items-center justify-between mb-4 pb-2 border-b border-[#830000]/60">
+            <h4 class="text-sm font-black text-white flex items-center space-x-2 font-heading">
+              <span class="w-6 h-6 rounded-lg bg-[#BC0202] text-white flex items-center justify-center text-xs font-black">A</span>
               <span>Loan Offer A (e.g. PSU Bank)</span>
             </h4>
           </div>
           <div class="space-y-3">
             <div>
-              <label class="block text-xs font-bold text-brand-textSecondary mb-1">Lender Name</label>
-              <input type="text" id="cmp-a-lender" value="State Bank of India" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+              <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Lender Name</label>
+              <input type="text" id="cmp-a-lender" value="State Bank of India" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-bold text-brand-textSecondary mb-1">Principal (₹)</label>
-                <input type="number" id="cmp-a-principal" value="500000" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+                <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Principal (₹)</label>
+                <input type="number" id="cmp-a-principal" value="500000" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
               </div>
               <div>
-                <label class="block text-xs font-bold text-brand-textSecondary mb-1">Stated ROI (%)</label>
-                <input type="number" step="0.01" id="cmp-a-rate" value="10.5" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+                <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Stated ROI (%)</label>
+                <input type="number" step="0.01" id="cmp-a-rate" value="10.5" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
               </div>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-bold text-brand-textSecondary mb-1">Tenure (Months)</label>
-                <input type="number" id="cmp-a-tenure" value="36" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+                <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Tenure (Months)</label>
+                <input type="number" id="cmp-a-tenure" value="36" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
               </div>
               <div>
-                <label class="block text-xs font-bold text-brand-textSecondary mb-1">Processing Fee (₹)</label>
-                <input type="number" id="cmp-a-fee" value="1500" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+                <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Processing Fee (₹)</label>
+                <input type="number" id="cmp-a-fee" value="1500" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
               </div>
             </div>
             <div>
-              <label class="block text-xs font-bold text-brand-textSecondary mb-1">Insurance (₹)</label>
-              <input type="number" id="cmp-a-ins" value="0" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+              <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Bundled Insurance (₹)</label>
+              <input type="number" id="cmp-a-ins" value="0" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
             </div>
           </div>
         </div>
 
         <!-- Loan B Card -->
-        <div class="bg-white border border-[#F4BAA3] rounded-3xl p-6 shadow-xs">
-          <div class="flex items-center justify-between mb-4 pb-2 border-b border-[#F4BAA3]/50">
-            <h4 class="text-sm font-bold text-[#172533] flex items-center space-x-2">
-              <span class="w-6 h-6 rounded-lg bg-[#F4BAA3] text-[#2C1914] flex items-center justify-center text-xs font-black">B</span>
+        <div class="bg-[#0D0202] border border-[#BC0202] rounded-3xl p-6 shadow-xl">
+          <div class="flex items-center justify-between mb-4 pb-2 border-b border-[#BC0202]/60">
+            <h4 class="text-sm font-black text-white flex items-center space-x-2 font-heading">
+              <span class="w-6 h-6 rounded-lg bg-[#FF0000] text-black flex items-center justify-center text-xs font-black">B</span>
               <span>Loan Offer B (e.g. Private Bank / NBFC)</span>
             </h4>
           </div>
           <div class="space-y-3">
             <div>
-              <label class="block text-xs font-bold text-brand-textSecondary mb-1">Lender Name</label>
-              <input type="text" id="cmp-b-lender" value="Aggressive NBFC" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+              <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Lender Name</label>
+              <input type="text" id="cmp-b-lender" value="Aggressive NBFC" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-bold text-brand-textSecondary mb-1">Principal (₹)</label>
-                <input type="number" id="cmp-b-principal" value="500000" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+                <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Principal (₹)</label>
+                <input type="number" id="cmp-b-principal" value="500000" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
               </div>
               <div>
-                <label class="block text-xs font-bold text-brand-textSecondary mb-1">Stated ROI (%)</label>
-                <input type="number" step="0.01" id="cmp-b-rate" value="10.5" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+                <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Stated ROI (%)</label>
+                <input type="number" step="0.01" id="cmp-b-rate" value="10.5" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
               </div>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-bold text-brand-textSecondary mb-1">Tenure (Months)</label>
-                <input type="number" id="cmp-b-tenure" value="36" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+                <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Tenure (Months)</label>
+                <input type="number" id="cmp-b-tenure" value="36" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
               </div>
               <div>
-                <label class="block text-xs font-bold text-brand-textSecondary mb-1">Processing Fee (₹)</label>
-                <input type="number" id="cmp-b-fee" value="12500" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+                <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Processing Fee (₹)</label>
+                <input type="number" id="cmp-b-fee" value="12500" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
               </div>
             </div>
             <div>
-              <label class="block text-xs font-bold text-brand-textSecondary mb-1">Insurance (₹)</label>
-              <input type="number" id="cmp-b-ins" value="14000" class="w-full bg-[#FAF7EE] border border-[#A6C8E2] rounded-xl px-3 py-2 text-xs text-[#172533]">
+              <label class="block text-xs font-bold text-[#A1A1AA] mb-1">Bundled Insurance (₹)</label>
+              <input type="number" id="cmp-b-ins" value="14000" class="w-full bg-[#000000] border border-[#830000] rounded-xl px-3 py-2 text-xs text-white">
             </div>
           </div>
         </div>
@@ -498,20 +726,20 @@
 
       <!-- Action Button -->
       <div class="text-center">
-        <button onclick="submitComparison()" class="px-8 py-3 rounded-xl bg-[#619DC6] text-white text-xs font-bold hover:bg-[#487EA4] transition-all shadow-md shadow-[#619DC6]/20 inline-flex items-center space-x-2">
+        <button onclick="submitComparison()" class="px-8 py-3 rounded-xl bg-gradient-to-r from-[#BC0202] to-[#FF0000] text-white text-xs font-black hover:brightness-110 transition-all shadow-lg shadow-[#FF0000]/30 inline-flex items-center space-x-2">
           <i data-lucide="scale" class="w-4 h-4"></i>
-          <span>Rank by Total Cost of Borrowing</span>
+          <span>Rank by Institutional Cost of Borrowing</span>
         </button>
       </div>
 
       <!-- Comparison Result -->
-      <div id="comparison-result" class="hidden max-w-3xl mx-auto bg-white border border-[#A6C8E2] rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
-        <div class="p-4 rounded-2xl bg-[#A6C8E2]/25 border border-[#A6C8E2]">
-          <h4 class="text-sm font-bold text-[#1E4968] mb-1 flex items-center space-x-2">
-            <i data-lucide="trophy" class="w-4 h-4 text-[#619DC6]"></i>
-            <span>Auditor Recommendation</span>
+      <div id="comparison-result" class="hidden max-w-3xl mx-auto bg-[#0D0202] border-2 border-[#830000] rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
+        <div class="p-4 rounded-2xl bg-[#830000]/30 border border-[#BC0202]">
+          <h4 class="text-sm font-black text-[#FF0000] mb-1 flex items-center space-x-2 font-heading">
+            <i data-lucide="trophy" class="w-4 h-4"></i>
+            <span>Executive Recommendation</span>
           </h4>
-          <p id="cmp-recommendation-text" class="text-xs text-[#172533] leading-relaxed font-medium"></p>
+          <p id="cmp-recommendation-text" class="text-xs text-[#E4E4E7] leading-relaxed font-semibold"></p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="cmp-cards-container">
@@ -523,17 +751,19 @@
   </main>
 
   <!-- Footer -->
-  <footer class="border-t border-[#A6C8E2]/50 bg-[#F4F0E2] py-6 text-center text-xs text-brand-textSecondary">
+  <footer class="border-t border-[#830000]/60 bg-[#000000] py-6 text-center text-xs text-[#71717A] mt-auto">
     <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-      <div class="flex items-center space-x-2">
-        <span class="font-extrabold text-[#172533]">LoanLens</span>
+      <div class="flex items-center space-x-2 font-mono">
+        <span class="font-black text-white">LoanLens</span>
         <span>•</span>
-        <span>Built for Indian Borrowers</span>
+        <span>Senior Finance Manager Loan Audit Engine</span>
       </div>
-      <div class="flex items-center space-x-3 text-[11px] text-brand-textMuted">
-        <span>RBI Fair Lending Guidelines (April 2024)</span>
+      <div class="flex items-center space-x-3 text-[11px] text-[#A1A1AA] font-mono">
+        <span>RBI KFS Mandatory Directives (April 2024)</span>
         <span>•</span>
-        <span>SAC 9971 Statutory 18% GST</span>
+        <span>Circular RBI/2014-15/168</span>
+        <span>•</span>
+        <span>SAC 9971 GST</span>
       </div>
     </div>
   </footer>
@@ -542,6 +772,24 @@
   <script>
     let currentLanguage = 'en';
     let selectedPdfFile = null;
+    let fullExtractedText = "";
+    let lastAuditData = null;
+
+    // Toast feedback notification
+    function showToast(message, isError = false) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `px-4 py-3 rounded-2xl text-xs font-bold text-white shadow-2xl transition-all duration-300 transform translate-y-2 pointer-events-auto border flex items-center space-x-2 ${
+        isError ? 'bg-[#830000] border-[#FF0000]' : 'bg-[#0D0202] border-[#BC0202]'
+      }`;
+      toast.innerHTML = `<i data-lucide="${isError ? 'alert-triangle' : 'check-circle'}" class="w-4 h-4 text-[#FF0000]"></i><span>${message}</span>`;
+      container.appendChild(toast);
+      lucide.createIcons();
+      setTimeout(() => {
+        toast.classList.add('opacity-0', '-translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
 
     // Resilient JSON response parser that handles HTML error pages gracefully
     async function parseJsonResponse(res) {
@@ -580,8 +828,10 @@
       const key = document.getElementById('input-openrouter-key').value.trim();
       if (key) {
         localStorage.setItem('loanlens_openrouter_key', key);
+        showToast("OpenRouter API Key saved successfully!");
       } else {
         localStorage.removeItem('loanlens_openrouter_key');
+        showToast("OpenRouter key removed. Running in offline heuristic mode.");
       }
       toggleKeyModal();
       checkSystemStatus();
@@ -600,12 +850,12 @@
         const warningBanner = document.getElementById('api-key-warning');
 
         if (hasKey) {
-          statusEl.innerText = "OpenRouter: Active";
-          statusEl.className = "text-[#2A5577] font-bold";
+          statusEl.innerText = "OpenRouter: Connected";
+          statusEl.className = "text-[#FF0000] font-black";
           warningBanner.classList.add('hidden');
         } else {
           statusEl.innerText = "Add API Key";
-          statusEl.className = "text-brand-textPrimary font-semibold";
+          statusEl.className = "text-white font-semibold";
           warningBanner.classList.remove('hidden');
         }
       } catch (e) {
@@ -618,27 +868,42 @@
       ['en', 'hi', 'kn'].forEach(l => {
         const btn = document.getElementById(`lang-${l}`);
         if (l === lang) {
-          btn.className = "px-2.5 py-1 text-xs font-bold rounded-lg transition-all bg-[#619DC6] text-white shadow-sm";
+          btn.className = "px-2.5 py-1 text-xs font-bold rounded-lg transition-all bg-[#BC0202] text-white shadow-sm";
         } else {
-          btn.className = "px-2.5 py-1 text-xs font-semibold rounded-lg transition-all text-brand-textSecondary hover:text-[#172533]";
+          btn.className = "px-2.5 py-1 text-xs font-semibold rounded-lg transition-all text-[#A1A1AA] hover:text-white";
         }
       });
-      document.getElementById('current-lang-badge').innerText = lang === 'hi' ? 'हिन्दी' : (lang === 'kn' ? 'ಕನ್ನಡ' : 'English');
+      showToast(`Language switched to ${lang === 'hi' ? 'Hindi (हिन्दी)' : (lang === 'kn' ? 'Kannada (ಕನ್ನಡ)' : 'English')}`);
     }
 
     function switchTab(tab) {
-      ['audit', 'manual', 'compare'].forEach(t => {
+      ['audit', 'simulator', 'manual', 'compare'].forEach(t => {
         document.getElementById(`tab-${t}`).classList.add('hidden');
-        document.getElementById(`tab-btn-${t}`).className = "py-2.5 px-4 text-xs sm:text-sm font-semibold rounded-xl transition-all text-brand-textSecondary hover:text-[#172533] flex items-center space-x-2";
+        document.getElementById(`tab-btn-${t}`).className = "py-2.5 px-4 text-xs sm:text-sm font-semibold rounded-xl transition-all text-[#A1A1AA] hover:text-white flex items-center space-x-2";
       });
       document.getElementById(`tab-${tab}`).classList.remove('hidden');
-      document.getElementById(`tab-btn-${tab}`).className = "py-2.5 px-4 text-xs sm:text-sm font-bold rounded-xl transition-all bg-[#619DC6] text-white flex items-center space-x-2 shadow-sm";
+      document.getElementById(`tab-btn-${tab}`).className = "py-2.5 px-4 text-xs sm:text-sm font-black rounded-xl transition-all bg-gradient-to-r from-[#BC0202] to-[#FF0000] text-white flex items-center space-x-2 shadow-md shadow-[#FF0000]/20";
       lucide.createIcons();
+      if (tab === 'simulator') {
+        runLiveSimulator();
+      }
     }
 
     function toggleExtractedText() {
       const drawer = document.getElementById('raw-text-drawer');
       drawer.classList.toggle('hidden');
+    }
+
+    function filterRawText() {
+      const q = document.getElementById('raw-text-search').value.toLowerCase().trim();
+      const contentEl = document.getElementById('raw-extracted-text-content');
+      if (!q) {
+        contentEl.innerText = fullExtractedText;
+        return;
+      }
+      const lines = fullExtractedText.split('\n');
+      const filtered = lines.filter(l => l.toLowerCase().includes(q));
+      contentEl.innerText = filtered.length > 0 ? filtered.join('\n') : `--- No lines match keyword "${q}" ---`;
     }
 
     function handleFileSelect(event) {
@@ -651,7 +916,8 @@
         
         const btn = document.getElementById('btn-run-audit');
         btn.disabled = false;
-        btn.className = "w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-bold bg-[#619DC6] text-white hover:bg-[#487EA4] transition-all cursor-pointer flex items-center justify-center space-x-2 shadow-md shadow-[#619DC6]/20";
+        btn.className = "w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-[#BC0202] to-[#FF0000] text-white hover:brightness-110 transition-all cursor-pointer flex items-center justify-center space-x-2 shadow-lg shadow-[#FF0000]/30";
+        showToast(`Document loaded: ${file.name}`);
       }
     }
 
@@ -662,17 +928,112 @@
           const blob = await response.blob();
           selectedPdfFile = new File([blob], "HDFC_Sanction_Letter.pdf", { type: "application/pdf" });
           const nameEl = document.getElementById('selected-file-name');
-          nameEl.innerText = `Selected: HDFC_Sanction_Letter.pdf (Sample KFS Loaded)`;
+          nameEl.innerText = `Selected: HDFC_Sanction_Letter.pdf (Default KFS Loaded)`;
           nameEl.classList.remove('hidden');
           
           const btn = document.getElementById('btn-run-audit');
           btn.disabled = false;
-          btn.className = "w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-bold bg-[#619DC6] text-white hover:bg-[#487EA4] transition-all cursor-pointer flex items-center justify-center space-x-2 shadow-md shadow-[#619DC6]/20";
+          btn.className = "w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-black bg-gradient-to-r from-[#BC0202] to-[#FF0000] text-white hover:brightness-110 transition-all cursor-pointer flex items-center justify-center space-x-2 shadow-lg shadow-[#FF0000]/30";
+          showToast("Sample HDFC KFS letter loaded!");
         } else {
-          alert("Sample file ready! Upload your PDF or use Direct Terms Inspector.");
+          showToast("Sample file ready! Upload your PDF or use Direct Terms.", true);
         }
       } catch (e) {
-        alert("Could not load sample PDF. Please select a PDF file from your device.");
+        showToast("Could not load sample PDF. Please select from device.", true);
+      }
+    }
+
+    // 1-Click Preset Scenario Loader
+    async function loadScenario(presetKey) {
+      switchTab('audit');
+      const presets = {
+        sbi_homeloan: {
+          lender: "State Bank of India",
+          principal: 4500000,
+          rate: 10.05,
+          tenure: 180,
+          stated_emi: 56002,
+          fee: 47200,
+          doc: 0,
+          ins: 0,
+          penalty: false,
+          label: "SBI ₹45L Home Loan (Disguised EMI Leakage)"
+        },
+        hdfc_personal: {
+          lender: "HDFC Bank",
+          principal: 500000,
+          rate: 11.5,
+          tenure: 36,
+          stated_emi: 16490,
+          fee: 7500,
+          doc: 1200,
+          ins: 14800,
+          penalty: true,
+          label: "HDFC ₹5L Personal Loan (Insurance & Prepayment Trap)"
+        },
+        bajaj_flat: {
+          lender: "Bajaj Finance",
+          principal: 300000,
+          rate: 7.5,
+          tenure: 36,
+          stated_emi: 10208, // 7.5% flat creates ~₹10,208 EMI, which equals 14.1% reducing APR!
+          fee: 9000,
+          doc: 1500,
+          ins: 4500,
+          penalty: true,
+          label: "Bajaj Finance ₹3L Flat Rate Scam"
+        },
+        axis_auto: {
+          lender: "Axis Bank",
+          principal: 800000,
+          rate: 9.8,
+          tenure: 60,
+          stated_emi: 16918,
+          fee: 18000,
+          doc: 2500,
+          ins: 12000,
+          penalty: false,
+          label: "Axis Bank ₹8L Auto Loan (High Upfront Fees & GST)"
+        }
+      };
+
+      const p = presets[presetKey];
+      if (!p) return;
+
+      showToast(`Loading scenario: ${p.label}...`);
+      
+      const loading = document.getElementById('audit-loading');
+      const results = document.getElementById('audit-results');
+      loading.classList.remove('hidden');
+      results.classList.add('hidden');
+
+      const payload = {
+        lender_name: p.lender,
+        principal_amount: p.principal,
+        stated_interest_rate: p.rate,
+        interest_type: "reducing",
+        tenure_months: p.tenure,
+        stated_emi: p.stated_emi,
+        processing_fee: p.fee,
+        documentation_charges: p.doc,
+        bundled_insurance: p.ins,
+        has_prepayment_penalty: p.penalty
+      };
+
+      try {
+        const apiKeyParam = getStoredApiKey() ? `&openrouter_api_key=${encodeURIComponent(getStoredApiKey())}` : '';
+        const res = await fetch(`/api/v1/audit/manual?language=${currentLanguage}${apiKeyParam}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await parseJsonResponse(res);
+        renderAuditResults(data);
+        results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (err) {
+        showToast(`Audit Error: ${err.message}`, true);
+      } finally {
+        loading.classList.add('hidden');
       }
     }
 
@@ -701,8 +1062,9 @@
 
         const data = await parseJsonResponse(res);
         renderAuditResults(data);
+        showToast("Audit completed successfully!");
       } catch (err) {
-        alert(`Audit Error: ${err.message}`);
+        showToast(`Audit Error: ${err.message}`, true);
       } finally {
         loading.classList.add('hidden');
       }
@@ -738,33 +1100,36 @@
         });
         const data = await parseJsonResponse(res);
         renderAuditResults(data);
+        showToast("Direct audit completed!");
       } catch (err) {
-        alert(`Audit Error: ${err.message}`);
+        showToast(`Audit Error: ${err.message}`, true);
       } finally {
         loading.classList.add('hidden');
       }
     }
 
     function renderAuditResults(data) {
+      lastAuditData = data;
       document.getElementById('audit-results').classList.remove('hidden');
 
       // Lender and extraction metadata
       document.getElementById('extracted-lender-name').innerText = data.lender_name || "Sanction Letter Document";
       const extractionBadge = document.getElementById('extraction-badge');
       if (data.extraction_method && data.extraction_method.includes('llm')) {
-        extractionBadge.innerHTML = `<span class="text-[#2A5577] font-bold">● AI Extracted (Qwen-2.5-72B)</span>`;
+        extractionBadge.innerHTML = `<span class="text-[#FF0000] font-bold">● AI Extracted (Senior Finance Persona)</span>`;
       } else {
-        extractionBadge.innerHTML = `<span class="text-[#964121] font-semibold">● Offline Heuristic Extracted (Add API key for AI)</span>`;
+        extractionBadge.innerHTML = `<span class="text-[#BC0202] font-semibold">● Offline Heuristic Extracted (Add API key for AI)</span>`;
       }
 
       // Raw extracted text preview
-      document.getElementById('raw-extracted-text-content').innerText = data.raw_extracted_text_preview || "No preview available.";
+      fullExtractedText = data.raw_extracted_text_preview || "No raw preview text available.";
+      document.getElementById('raw-extracted-text-content').innerText = fullExtractedText;
 
       // Metrics
       document.getElementById('metric-net-disbursed').innerText = `₹${data.net_disbursed_amount.toLocaleString('en-IN')}`;
       document.getElementById('metric-principal').innerText = `₹${data.principal.toLocaleString('en-IN')}`;
       const deducted = data.principal - data.net_disbursed_amount;
-      document.getElementById('metric-deduction-badge').innerText = `-₹${deducted.toLocaleString('en-IN')} deducted`;
+      document.getElementById('metric-deduction-badge').innerText = `-₹${deducted.toLocaleString('en-IN')} upfront`;
 
       document.getElementById('metric-true-apr').innerText = `${data.effective_annual_apr.toFixed(2)}%`;
       document.getElementById('metric-stated-rate').innerText = `${data.stated_annual_rate.toFixed(2)}%`;
@@ -778,13 +1143,13 @@
       const scoreLabel = document.getElementById('metric-score-label');
       if (data.rbi_compliance_score >= 80) {
         scoreLabel.innerText = "Fair lending compliant";
-        scoreLabel.className = "mt-2 text-xs text-[#2A5577] font-bold";
+        scoreLabel.className = "mt-2 text-xs text-white font-bold";
       } else if (data.rbi_compliance_score >= 60) {
         scoreLabel.innerText = "Caution: high upfront fees";
-        scoreLabel.className = "mt-2 text-xs text-[#964121] font-bold";
+        scoreLabel.className = "mt-2 text-xs text-[#BC0202] font-bold";
       } else {
-        scoreLabel.innerText = "High alert: predatory loan terms";
-        scoreLabel.className = "mt-2 text-xs text-[#C04C25] font-black";
+        scoreLabel.innerText = "HIGH RISK: Predatory loan terms";
+        scoreLabel.className = "mt-2 text-xs text-[#FF0000] font-black";
       }
 
       // Discrepancy list
@@ -793,43 +1158,133 @@
       document.getElementById('discrepancy-count').innerText = `${data.discrepancies.length} Findings`;
 
       if (data.discrepancies.length === 0) {
-        discList.innerHTML = `<div class="p-4 rounded-2xl bg-[#A6C8E2]/20 border border-[#A6C8E2] text-xs text-[#1E4968] font-medium">Clean Sanction Letter: No hidden charges, flat-rate disguises, or RBI violations detected.</div>`;
+        discList.innerHTML = `<div class="p-4 rounded-2xl bg-[#070101] border border-[#BC0202] text-xs text-white font-bold">Clean Sanction Letter: No hidden deductions, flat-rate disguises, or regulatory violations detected.</div>`;
       } else {
         data.discrepancies.forEach(d => {
           const isCritical = d.severity === 'critical';
           const isWarning = d.severity === 'warning';
           
-          let cardStyle = "border-[#A6C8E2] bg-white";
-          let badgeStyle = "bg-[#A6C8E2]/40 text-[#1E4968] border-[#A6C8E2]";
+          let cardStyle = "border-[#830000] bg-[#070101]";
+          let badgeStyle = "bg-[#830000]/60 text-white border-[#830000]";
           
           if (isCritical) {
-            cardStyle = "border-[#F4BAA3] bg-[#FDF5F2]";
-            badgeStyle = "bg-[#F4BAA3] text-[#2C1914] border-[#E59B80]";
+            cardStyle = "border-[#FF0000] bg-[#1A0303] red-glow";
+            badgeStyle = "bg-[#FF0000] text-black border-[#FF0000] font-black";
           } else if (isWarning) {
-            cardStyle = "border-[#F4BAA3]/80 bg-[#FAF7EE]";
-            badgeStyle = "bg-[#F4BAA3]/60 text-[#2C1914] border-[#F4BAA3]";
+            cardStyle = "border-[#BC0202] bg-[#0E0202]";
+            badgeStyle = "bg-[#BC0202] text-white border-[#BC0202]";
           }
 
           const div = document.createElement('div');
-          div.className = `p-4 rounded-2xl border ${cardStyle} transition-all shadow-xs`;
+          div.className = `p-4 rounded-2xl border ${cardStyle} transition-all shadow-md`;
           div.innerHTML = `
             <div class="flex items-center justify-between mb-1.5">
-              <h4 class="text-xs font-bold text-[#172533] flex items-center space-x-2">
+              <h4 class="text-xs font-black text-white flex items-center space-x-2 font-heading">
                 <span>${d.title}</span>
               </h4>
               <span class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${badgeStyle}">${d.severity}</span>
             </div>
-            <p class="text-xs text-brand-textSecondary leading-relaxed">${d.description}</p>
+            <p class="text-xs text-[#E4E4E7] leading-relaxed">${d.description}</p>
           `;
           discList.appendChild(div);
         });
       }
 
-      // Multilingual explanation markdown
+      // Multilingual Senior Finance Manager explanation markdown
       const expContainer = document.getElementById('explanation-content');
       expContainer.innerHTML = marked.parse(data.explanation || 'No explanation generated.');
 
       lucide.createIcons();
+    }
+
+    // 1-Click Copy Negotiation Script for WhatsApp / Email
+    function copyNegotiationScript() {
+      if (!lastAuditData) {
+        showToast("No active audit report to copy yet.", true);
+        return;
+      }
+      
+      const scriptText = `🚨 LOANLENS EXECUTIVE AUDIT SUMMARY FOR LENDER:\n` +
+        `• Lender: ${lastAuditData.lender_name || "Bank"}\n` +
+        `• Sanctioned Principal: ₹${lastAuditData.principal.toLocaleString('en-IN')}\n` +
+        `• Stated ROI: ${lastAuditData.stated_annual_rate}%\n` +
+        `• True Effective APR (IRR): ${lastAuditData.effective_annual_apr.toFixed(2)}%\n` +
+        `• True Reducing EMI: ₹${lastAuditData.calculated_reducing_emi.toLocaleString('en-IN')}/mo\n` +
+        `• Total Upfront Fees & 18% GST: ₹${lastAuditData.total_upfront_fees_incl_gst.toLocaleString('en-IN')}\n\n` +
+        `NEGOTIATION SCRIPT TO BRANCH MANAGER:\n` +
+        `1. Our independent actuarial audit calculates the reducing EMI on ₹${lastAuditData.principal.toLocaleString('en-IN')} as ₹${lastAuditData.calculated_reducing_emi.toLocaleString('en-IN')}. Please align the sanction schedule before disbursal.\n` +
+        `2. As the True APR reaches ${lastAuditData.effective_annual_apr.toFixed(2)}%, please grant a minimum 50% waiver on processing fees.\n` +
+        `3. In accordance with RBI Circular RBI/2014-15/168, confirm in writing that floating rate prepayment penalty is 0%.`;
+
+      navigator.clipboard.writeText(scriptText).then(() => {
+        const btnText = document.getElementById('btn-copy-script-text');
+        btnText.innerText = "Copied to Clipboard! ✨";
+        showToast("Script copied! Paste directly to your loan officer.");
+        setTimeout(() => {
+          btnText.innerText = "Copy Script for WhatsApp / Email";
+        }, 3000);
+      });
+    }
+
+    // Live Real-Time Amortization & APR Simulator
+    function runLiveSimulator() {
+      const p = parseFloat(document.getElementById('sim-principal').value);
+      const r = parseFloat(document.getElementById('sim-rate').value);
+      const n = parseInt(document.getElementById('sim-tenure').value);
+      const fees = parseFloat(document.getElementById('sim-fees').value);
+
+      // Display live slider labels
+      document.getElementById('sim-disp-principal').innerText = `₹${p.toLocaleString('en-IN')}`;
+      document.getElementById('sim-disp-rate').innerText = `${r.toFixed(2)}%`;
+      document.getElementById('sim-disp-tenure').innerText = `${n} Months (${(n/12).toFixed(1)} Yrs)`;
+      document.getElementById('sim-disp-fees').innerText = `₹${fees.toLocaleString('en-IN')}`;
+
+      // Calculate Reducing EMI
+      const monthlyRate = (r / 100.0) / 12.0;
+      let emi = 0;
+      if (monthlyRate > 0) {
+        emi = (p * monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1);
+      } else {
+        emi = p / n;
+      }
+
+      const totalRepaid = emi * n;
+      const totalInterest = totalRepaid - p;
+      const netDisbursed = Math.max(0, p - fees);
+      const totalOutflow = totalRepaid + fees;
+
+      // Approximate True APR via Newton-Raphson IRR
+      let irr = monthlyRate;
+      for (let iter = 0; iter < 20; iter++) {
+        let npv = -netDisbursed;
+        let dnpv = 0;
+        for (let t = 1; t <= n; t++) {
+          const discount = Math.pow(1 + irr, t);
+          npv += emi / discount;
+          dnpv -= (t * emi) / Math.pow(1 + irr, t + 1);
+        }
+        if (Math.abs(dnpv) < 1e-10) break;
+        const diff = npv / dnpv;
+        irr = irr - diff;
+        if (Math.abs(diff) < 1e-6) break;
+      }
+      const trueApr = (Math.pow(1 + irr, 12) - 1) * 100;
+
+      // Update Live UI Labels
+      document.getElementById('sim-res-emi').innerText = `₹${Math.round(emi).toLocaleString('en-IN')} / mo`;
+      document.getElementById('sim-res-apr').innerText = `${trueApr.toFixed(2)}%`;
+      document.getElementById('sim-res-disbursed').innerText = `₹${Math.round(netDisbursed).toLocaleString('en-IN')}`;
+      document.getElementById('sim-res-interest').innerText = `₹${Math.round(totalInterest).toLocaleString('en-IN')}`;
+      document.getElementById('sim-res-total').innerText = `₹${Math.round(totalOutflow).toLocaleString('en-IN')}`;
+
+      // Update Dynamic Visual Cost Bar
+      const principalPct = Math.max(5, (netDisbursed / totalOutflow) * 100);
+      const interestPct = Math.max(5, (totalInterest / totalOutflow) * 100);
+      const feesPct = Math.max(2, (fees / totalOutflow) * 100);
+
+      document.getElementById('sim-bar-principal').style.width = `${principalPct}%`;
+      document.getElementById('sim-bar-interest').style.width = `${interestPct}%`;
+      document.getElementById('sim-bar-fees').style.width = `${feesPct}%`;
     }
 
     async function submitComparison() {
@@ -870,34 +1325,36 @@
           const isWinner = loan.rank === 1;
           const card = document.createElement('div');
           
-          let cardBg = isWinner ? 'bg-gradient-to-b from-[#A6C8E2]/25 to-white border-2 border-[#619DC6]' : 'bg-[#FAF7EE] border border-[#A6C8E2]';
-          let badgeBg = isWinner ? 'bg-[#619DC6] text-white' : 'bg-[#E2ECF2] text-brand-textSecondary';
+          let cardBg = isWinner ? 'bg-[#150303] border-2 border-[#FF0000] red-glow' : 'bg-[#070101] border border-[#830000]';
+          let badgeBg = isWinner ? 'bg-[#FF0000] text-black font-black' : 'bg-[#830000] text-[#A1A1AA]';
 
-          card.className = `p-5 rounded-2xl ${cardBg} shadow-xs`;
+          card.className = `p-5 rounded-2xl ${cardBg} shadow-xl`;
           card.innerHTML = `
             <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-bold text-[#172533]">${loan.identifier} (${loan.lender_name})</span>
+              <span class="text-xs font-black text-white font-heading">${loan.identifier} (${loan.lender_name})</span>
               <span class="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${badgeBg}">Rank #${loan.rank}</span>
             </div>
-            <div class="space-y-2 text-xs text-brand-textSecondary">
-              <div class="flex justify-between"><span>True APR:</span> <strong class="text-[#172533]">${loan.effective_annual_apr.toFixed(2)}%</strong></div>
-              <div class="flex justify-between"><span>Net Disbursed:</span> <strong class="text-[#172533]">₹${loan.net_disbursed_amount.toLocaleString('en-IN')}</strong></div>
-              <div class="flex justify-between"><span>Total Cost of Borrowing:</span> <strong class="${isWinner ? 'text-[#2A5577] font-bold' : 'text-[#C04C25] font-bold'}">₹${loan.total_cost_of_borrowing.toLocaleString('en-IN')}</strong></div>
+            <div class="space-y-2 text-xs text-[#E4E4E7]">
+              <div class="flex justify-between"><span>True Effective APR:</span> <strong class="text-[#FF0000] font-mono">${loan.effective_annual_apr.toFixed(2)}%</strong></div>
+              <div class="flex justify-between"><span>Net Disbursed:</span> <strong class="text-white font-mono">₹${loan.net_disbursed_amount.toLocaleString('en-IN')}</strong></div>
+              <div class="flex justify-between"><span>Total Cost of Borrowing:</span> <strong class="${isWinner ? 'text-white font-bold' : 'text-[#FF0000] font-black'} font-mono">₹${loan.total_cost_of_borrowing.toLocaleString('en-IN')}</strong></div>
             </div>
-            <div class="mt-3 pt-2.5 border-t border-[#A6C8E2]/50 text-[11px] text-brand-textSecondary leading-normal font-medium">${loan.key_takeaway}</div>
+            <div class="mt-3 pt-2.5 border-t border-[#830000]/60 text-[11px] text-[#A1A1AA] leading-normal font-semibold">${loan.key_takeaway}</div>
           `;
           container.appendChild(card);
         });
 
         lucide.createIcons();
+        showToast("Loan comparison completed!");
       } catch (err) {
-        alert(`Comparison Error: ${err.message}`);
+        showToast(`Comparison Error: ${err.message}`, true);
       }
     }
 
     // Initialize on page load
     lucide.createIcons();
     checkSystemStatus();
+    runLiveSimulator();
   </script>
 </body>
 </html>

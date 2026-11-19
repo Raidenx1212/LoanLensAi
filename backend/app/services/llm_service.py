@@ -159,21 +159,36 @@ class OpenRouterLLMService:
         }
 
         lang_instructions = {
-            Language.ENGLISH: "Write the response in clear, empowering, consumer-friendly English.",
-            Language.HINDI: "Write the complete response in natural, fluent Hindi (Devanagari script). Use easy-to-understand loan terms like ऋण (loan), किश्त (EMI), वास्तविक ब्याज दर (True APR), अतिरिक्त शुल्क (hidden charges).",
-            Language.KANNADA: "Write the complete response in natural, professional Kannada script (ಕನ್ನಡ). Use clear loan concepts such as ಸಾಲ (loan), ಮಾಸಿಕ ಕಂತು (EMI), ನೈಜ ಬಡ್ಡಿದರ (True APR), ಮುಂಗಡ ಕಡಿತಗಳು (upfront deductions).",
+            Language.ENGLISH: "Write the response in authoritative, sharp, executive-level English with no corporate fluff.",
+            Language.HINDI: "Write the complete response in natural, authoritative Hindi (Devanagari script). Use formal institutional finance terminology: ऋण (loan), किश्त (EMI), वास्तविक ब्याज दर (True APR), अग्रिम कटौती (upfront deduction), वित्तीय विसंगति (financial anomaly).",
+            Language.KANNADA: "Write the complete response in formal, executive Kannada script (ಕನ್ನಡ). Use precise institutional financial terminology: ಸಾಲ (loan), ಮಾಸಿಕ ಕಂತು (EMI), ನೈಜ ಪರಿಣಾಮಕಾರಿ ಬಡ್ಡಿದರ (True Effective APR), ಮುಂಗಡ ಕಡಿತಗಳು (upfront deductions).",
         }
 
         system_prompt = (
-            "You are LoanLens Explainer, a trusted Indian financial ombudsman and consumer advocate.\n"
-            "You are provided with a 100% mathematically verified loan audit JSON.\n"
+            "You are a Senior Finance Manager, Chief Credit Risk Officer, and Elite Indian Banking & Loan Auditor with 20+ years of institutional treasury, corporate finance, and retail lending oversight.\n"
+            "You are analyzing a 100% mathematically verified loan audit JSON on behalf of your client (the borrower).\n\n"
+            "YOUR OBJECTIVE: Deliver a hard-hitting, sharp, executive-level financial analysis that dismantles deceptive bank terms, exposes mathematical traps, and arms the borrower with institutional-grade negotiation leverage.\n\n"
+            "TONE & STYLE GUIDELINES:\n"
+            "- Speak with the uncompromising authority, forensic precision, and clinical sharpness of a Senior Director of Finance / Chief Financial Analyst protecting a high-value client.\n"
+            "- Call out predatory spreads, hidden margin padding, and unfair deductions with exact rupee impact and basis points.\n"
+            "- Never sound timid or generic. Treat every rupee shaved off disbursal or padded into EMI as unacceptable leakages.\n"
+            "- Reference statutory guidelines and regulatory directives where applicable (e.g., RBI Fair Lending Guidelines, April 2024 Key Fact Statement (KFS) Directions, RBI Circular RBI/2014-15/168 on floating rate prepayment penalty prohibition, GST SAC 9971 on banking charges).\n\n"
             "STRICT RULES:\n"
-            "1. NEVER recalculate or alter any figures. Use the exact numbers provided in the audit JSON.\n"
+            "1. NEVER alter, round differently, or recalculate the numbers. Use the EXACT figures provided in the verified audit JSON.\n"
             f"2. {lang_instructions.get(language, lang_instructions[Language.ENGLISH])}\n"
-            "3. Format your breakdown into 3 distinct sections with Markdown headings:\n"
-            "   - **🚨 The Verdict & Reality Check**: Stated rate vs True APR, net in-hand cash vs sanctioned loan.\n"
-            "   - **🔍 Hidden Traps & Fee Breakdown**: 18% GST deductions, bundled insurance, and EMI anomalies.\n"
-            "   - **📋 Actionable Checklist for the Borrower**: 3 specific questions or negotiation demands to take to the bank branch manager.\n"
+            "3. Structure your executive report into these 3 mandatory sections with Markdown headings:\n\n"
+            "### 🚨 Executive Verdict & Treasury Reality Check\n"
+            "Provide an institutional-grade reality check contrasting the advertised nominal rate vs the True Effective APR. Detail the rate inflation spread in basis points/percentage, quantify the exact cash erosion between sanctioned principal and net in-hand cash, and state whether this loan represents acceptable market financing or aggressive lender rent-seeking.\n\n"
+            "### 🔍 Forensic Breakdown of Hidden Charges & Traps\n"
+            "Examine the 3 primary friction points:\n"
+            "- **Statutory 18% GST (SAC 9971)**: Dissect upfront processing and documentation fees + GST impact on capital efficiency.\n"
+            "- **Bundled Insurance & Ancillary Fees**: Evaluate credit shield/life covers. If bundled, flag that RBI mandates insurance cannot be made a mandatory tie-in condition for sanction.\n"
+            "- **Amortization & EMI Anomalies**: Compare stated EMI vs true reducing EMI. If there is a variance, calculate the cumulative lifetime loss over the full tenure (e.g., ₹X/month × N months = ₹Total Rupee Drainage).\n\n"
+            "### 📋 Institutional Negotiation Playbook for the Borrower\n"
+            "Provide exactly 3 uncompromising, executive-level scripts for the borrower to demand from the Bank Branch Manager or Chief Credit Underwriter:\n"
+            "1. **EMI Restructuring Demand**: An aggressive, mathematically armed question demanding immediate downward adjustment to true reducing amortization.\n"
+            "2. **Upfront Fee & GST Clawback**: Script to demand a 50% to 100% processing fee waiver and recalculation of net in-hand disbursal.\n"
+            "3. **Regulatory Non-Compliance & RBI Foreclosure Guarantee**: Formal demand invoking RBI Circular RBI/2014-15/168 (or KFS transparency norms) for written certification of zero penalty on prepayment and unbundling of any ancillary insurance.\n"
         )
 
         user_content = f"Verified Deterministic Audit Data:\n```json\n{json.dumps(audit_summary_for_llm, indent=2)}\n```"
@@ -356,53 +371,66 @@ class OpenRouterLLMService:
         )
 
     def _local_template_explanation(self, audit: LoanAuditReport, language: Language) -> str:
-        """Deterministic template fallback when OPENROUTER_API_KEY is not configured."""
+        """Deterministic Senior Finance Manager executive audit report fallback."""
+        emi_diff = (audit.stated_emi or 0) - audit.calculated_reducing_emi
+        lifetime_emi_loss = emi_diff * audit.tenure_months if emi_diff > 1 else 0
+
         if language == Language.HINDI:
             return (
-                f"### 🚨 ऋण विश्लेषण निष्कर्ष (LoanLens Audit)\n\n"
+                f"### 🚨 वरिष्ठ वित्त प्रबंधक का आधिकारिक निष्कर्ष (Senior Finance Manager Verdict)\n\n"
+                f"कथित ब्याज दर **{audit.stated_annual_rate}%** के मुकाबले आपकी वास्तविक वार्षिक लागत (**True Effective APR**) **{audit.effective_annual_apr}%** है। "
+                f"यह **+{audit.rate_inflation_spread}%** का स्प्रेड बैंक द्वारा छिपाए गए मार्जिन को दर्शाता है।\n\n"
                 f"- **स्वीकृत ऋण राशि**: ₹{audit.principal:,.2f}\n"
-                f"- **वास्तविक प्राप्त राशि (Net Disbursal)**: ₹{audit.net_disbursed_amount:,.2f}\n"
-                f"- **कथित ब्याज दर**: {audit.stated_annual_rate}% | **वास्तविक लागत (True APR)**: {audit.effective_annual_apr}%\n"
-                f"- **कुल ब्याज एवं अतिरिक्त लागत**: ₹{audit.total_cost_of_borrowing:,.2f}\n\n"
-                f"### 🔍 अतिरिक्त कटौती एवं शुल्क:\n"
-                f"- प्रोसेसिंग शुल्क व 18% GST: ₹{audit.total_upfront_fees_incl_gst:,.2f}\n"
-                f"- इंश्योरेंस प्रीमियम: ₹{audit.bundled_insurance_amount:,.2f}\n"
-                f"- भारतीय रिजर्व बैंक (RBI) अनुपालन स्कोर: {audit.rbi_compliance_score}/100\n\n"
-                f"### 📋 बैंक अधिकारी से पूछने योग्य बातें:\n"
-                f"1. क्या इंश्योरेंस लेना अनिवार्य है? (RBI के अनुसार यह स्वैच्छिक होना चाहिए)\n"
-                f"2. क्या 18% GST पहले से प्रोसेसिंग फीस में शामिल है या अलग से काटा गया है?\n"
-                f"3. फ्लोटिंग रेट लोन पर किसी भी प्रकार का प्रीपेमेंट पेनल्टी शुल्क न लगाएं।"
+                f"- **खाते में शुद्ध प्राप्त राशि (Net Disbursed)**: ₹{audit.net_disbursed_amount:,.2f} "
+                f"(₹{audit.principal - audit.net_disbursed_amount:,.2f} की सीधी कटौती)\n"
+                f"- **ऋण की कुल वास्तविक लागत**: ₹{audit.total_cost_of_borrowing:,.2f}\n"
+                f"- **RBI अनुपालन रेटिंग**: **{audit.rbi_compliance_score}/100**\n\n"
+                f"### 🔍 फोरेंसिक शुल्क विश्लेषण एवं वित्तीय विसंगतियां (Forensic Breakdown)\n\n"
+                f"- **18% वैधानिक GST (SAC 9971)**: ₹{audit.raw_processing_fee + audit.raw_documentation_charges:,.2f} के बैंक शुल्क पर ₹{audit.fee_gst_amount:,.2f} का अतिरिक्त GST काटा गया।\n"
+                f"- **बंडल इंश्योरेंस प्रीमियम**: ₹{audit.bundled_insurance_amount:,.2f} "
+                f"(आरबीआई निर्देशों के तहत ऋण बीमा अनिवार्य नहीं हो सकता, यह पूर्णतः स्वैच्छिक है)।\n"
+                + (f"- **EMI विसंगति (EMI Inflation)**: बैंक द्वारा मांगी गई ₹{audit.stated_emi:,.2f} की EMI गणितीय रूप से सही रिड्यूसिंग EMI (₹{audit.calculated_reducing_emi:,.2f}) से **₹{emi_diff:,.2f} प्रति माह अधिक** है! "
+                   f"{audit.tenure_months} महीनों में यह कुल **₹{lifetime_emi_loss:,.2f} का अतिरिक्त वित्तीय नुकसान** है।\n\n" if emi_diff > 5 else "- **EMI मिलान**: स्वीकृत EMI रिड्यूसिंग बैलेंस फॉर्मूले से मेल खाती है।\n\n") +
+                f"### 📋 बैंक शाखा प्रबंधक के समक्ष वार्ता रणनीति (Executive Negotiation Playbook)\n\n"
+                f"1. **EMI संशोधन की मांग**: \"बैंक की ₹{audit.stated_emi or audit.calculated_reducing_emi:,.2f} की EMI वास्तविक रिड्यूसिंग बैलेंस गणना (₹{audit.calculated_reducing_emi:,.2f}) से मेल नहीं खाती। कृपया इसे तुरंत संशोधित करें।\"\n"
+                f"2. **प्रोसेसिंग फीस में छूट की मांग**: \"ऋण की वास्तविक APR {audit.effective_annual_apr}% तक पहुंच रही है। ₹{audit.total_upfront_fees_incl_gst:,.2f} के अग्रिम शुल्क पर 50% से 100% की छूट प्रदान करें।\"\n"
+                f"3. **RBI सर्कुलर RBI/2014-15/168 का अनुपालन**: \"फ्लोटिंग रेट व्यक्तिगत ऋण पर प्रीपेमेंट या फोरक्लोजर पेनल्टी लगाना आरबीआई नियमों का उल्लंघन है। मुझे लिखित में शून्य पेनल्टी की पुष्टि दें।\""
             )
         elif language == Language.KANNADA:
             return (
-                f"### 🚨 ಸಾಲ ಪರಿಶೀಲನಾ ವರದಿ (LoanLens Audit)\n\n"
-                f"- **ಮಂಜೂರಾದ ಸಾಲದ ಮೊತ್ತ**: ₹{audit.principal:,.2f}\n"
-                f"- **ನಿಮ್ಮ ಕೈಸೇರುವ ನೈಜ ಹಣ (Net In-Hand)**: ₹{audit.net_disbursed_amount:,.2f}\n"
-                f"- **ಹೇಳಲಾದ ಬಡ್ಡಿದರ**: {audit.stated_annual_rate}% | **ನೈಜ ವಾರ್ಷಿಕ ಬಡ್ಡಿದರ (True APR)**: {audit.effective_annual_apr}%\n"
-                f"- **ಸಾಲದ ಒಟ್ಟು ಹೆಚ್ಚುವರಿ ಹೊರೆ**: ₹{audit.total_cost_of_borrowing:,.2f}\n\n"
-                f"### 🔍 ಗುಪ್ತ ಕಡಿತಗಳು ಮತ್ತು ಶುಲ್ಕಗಳು:\n"
-                f"- ಪ್ರೊಸೆಸಿಂಗ್ ಶುಲ್ಕ ಮತ್ತು 18% GST: ₹{audit.total_upfront_fees_incl_gst:,.2f}\n"
-                f"- ವಿಮೆ ಮೊತ್ತ: ₹{audit.bundled_insurance_amount:,.2f}\n"
-                f"- RBI ನಿಯಮಾವಳಿ ಅನುಸರಣೆ ಅಂಕ: {audit.rbi_compliance_score}/100\n\n"
-                f"### 📋 ಬ್ಯಾಂಕ್ ಅಧಿಕಾರಿಯೊಂದಿಗೆ ಚರ್ಚಿಸಬೇಕಾದ ಮುಖ್ಯಾಂಶಗಳು:\n"
-                f"1. ವಿಮೆ ಕಡ್ಡಾಯವೇ? (ಆರ್‌ಬಿಐ ನಿಯಮಗಳ ಪ್ರಕಾರ ಸಾಲ ವಿಮೆ ಐಚ್ಛಿಕವಾಗಿರುತ್ತದೆ).\n"
-                f"2. 18% GST ಯನ್ನು ಪ್ರೊಸೆಸಿಂಗ್ ಶುಲ್ಕದಲ್ಲಿ ಸೇರಿಸಲಾಗಿದೆಯೇ?\n"
-                f"3. ಫ್ಲೋಟಿಂಗ್ ದರದ ಸಾಲಕ್ಕೆ ಮುಂಚಿತ ಮರುಪಾವತಿ ದಂಡ ವಿಧಿಸಬಾರದು."
+                f"### 🚨 ಹಿರಿಯ ಹಣಕಾಸು ವ್ಯವಸ್ಥಾಪಕರ ವಿಧಿವಿಜ್ಞಾನ ವರದಿ (Senior Finance Manager Verdict)\n\n"
+                f"ಬ್ಯಾಂಕ್ ಘೋಷಿಸಿದ ಬಡ್ಡಿದರ **{audit.stated_annual_rate}%** ಆಗಿದ್ದರೂ, ನಿಮ್ಮ ನೈಜ ಪರಿಣಾಮಕಾರಿ ವಾರ್ಷಿಕ ಬಡ್ಡಿದರ (**True Effective APR**) **{audit.effective_annual_apr}%** ಆಗಿದೆ. "
+                f"ಇದು **+{audit.rate_inflation_spread}%** ನಷ್ಟು ದರ ಹಣದುಬ್ಬರವನ್ನು ತೋರಿಸುತ್ತದೆ.\n\n"
+                f"- **ಮಂಜೂರಾದ ಒಟ್ಟು ಸಾಲ**: ₹{audit.principal:,.2f}\n"
+                f"- **ನಿಮ್ಮ ಕೈಸೇರುವ ನಿವ್ವಳ ಮೊತ್ತ (Net Disbursed)**: ₹{audit.net_disbursed_amount:,.2f} (ಕಡಿತ: ₹{audit.principal - audit.net_disbursed_amount:,.2f})\n"
+                f"- **ಸಾಲದ ಒಟ್ಟು ನೈಜ ಮರುಪಾವತಿ ವೆಚ್ಚ**: ₹{audit.total_cost_of_borrowing:,.2f}\n"
+                f"- **ಆರ್‌ಬಿಐ ನ್ಯಾಯಯುತ ಸಾಲ ಅನುಸರಣೆ ಅಂಕ**: **{audit.rbi_compliance_score}/100**\n\n"
+                f"### 🔍 ಗುಪ್ತ ಶುಲ್ಕಗಳ ಪರಿಶೀಲನೆ (Forensic Breakdown)\n\n"
+                f"- **18% ಶಾಸನಬದ್ಧ GST (SAC 9971)**: ₹{audit.raw_processing_fee + audit.raw_documentation_charges:,.2f} ಶುಲ್ಕಕ್ಕೆ ₹{audit.fee_gst_amount:,.2f} GST ಕಡಿತ ಮಾಡಲಾಗಿದೆ.\n"
+                f"- **ಬಂಡಲ್ ವಿಮೆ ಕಡಿತ**: ₹{audit.bundled_insurance_amount:,.2f} (ಆರ್‌ಬಿಐ ನಿಯಮಗಳ ಪ್ರಕಾರ ಸಾಲ ವಿಮೆ ಐಚ್ಛಿಕ, ಕಡ್ಡಾಯವಲ್ಲ).\n"
+                + (f"- **EMI ಅಸಂಗತತೆ**: ಮಂಜೂರಾದ ಮಾಸಿಕ EMI ₹{audit.stated_emi:,.2f} ನೈಜ ರಿಡ್ಯೂಸಿಂಗ್ EMI ₹{audit.calculated_reducing_emi:,.2f} ಗಿಂತ ತಿಂಗಳಿಗೆ **₹{emi_diff:,.2f} ಹೆಚ್ಚಾಗಿದೆ**! {audit.tenure_months} ತಿಂಗಳುಗಳಲ್ಲಿ ಇದು ಒಟ್ಟು **₹{lifetime_emi_loss:,.2f} ಹೆಚ್ಚುವರಿ ನಷ್ಟ**!\n\n" if emi_diff > 5 else "- **EMI ಲೆಕ್ಕಾಚಾರ**: ಮಾಸಿಕ EMI ರಿಡ್ಯೂಸಿಂಗ್ ದರದೊಂದಿಗೆ ಹೊಂದಿಕೆಯಾಗುತ್ತದೆ.\n\n") +
+                f"### 📋 ಬ್ಯಾಂಕ್ ಮ್ಯಾನೇಜರ್ ಅವರೊಂದಿಗೆ ಮಾತುಕತೆಯ ಕಾರ್ಯತಂತ್ರ (Negotiation Playbook)\n\n"
+                f"1. **EMI ಮರುಲೆಕ್ಕಾಚಾರ**: \"ನೈಜ ರಿಡ್ಯೂಸಿಂಗ್ ಲೆಕ್ಕದ ಪ್ರಕಾರ ₹{audit.calculated_reducing_emi:,.2f} ಆಗಬೇಕಿರುವ EMI ಅನ್ನು ಸರಿಪಡಿಸಿ.\"\n"
+                f"2. **ಪ್ರೊಸೆಸಿಂಗ್ ಶುಲ್ಕ ಮನ್ನಾ**: \"ಒಟ್ಟು ವೆಚ್ಚ ಕಡಿಮೆ ಮಾಡಲು ₹{audit.total_upfront_fees_incl_gst:,.2f} ಶುಲ್ಕದಲ್ಲಿ ಕನಿಷ್ಠ 50% ರಿಯಾಯಿತಿ ನೀಡಿ.\"\n"
+                f"3. **ಆರ್‌ಬಿಐ ಸುತ್ತೋಲೆ RBI/2014-15/168 ಖಾತರಿ**: \"ಫ್ಲೋಟಿಂಗ್ ದರದ ಸಾಲಕ್ಕೆ ಯಾವುದೇ ಮುಂಚಿತ ತೀರುವಳಿ ಶುಲ್ಕ ಇರುವುದಿಲ್ಲ ಎಂದು ಲಿಖಿತ ಭರವಸೆ ನೀಡಿ.\""
             )
         else:
             return (
-                f"### 🚨 The Verdict & Reality Check\n\n"
-                f"- **Sanctioned Amount**: ₹{audit.principal:,.2f} | **In-Hand Cash Disbursed**: ₹{audit.net_disbursed_amount:,.2f}\n"
-                f"- **Stated Interest Rate**: {audit.stated_annual_rate}% per annum\n"
-                f"- **True Effective APR**: **{audit.effective_annual_apr}%** (Inflation spread: +{audit.rate_inflation_spread}%)\n"
-                f"- **Total Cost of Borrowing**: ₹{audit.total_cost_of_borrowing:,.2f}\n\n"
-                f"### 🔍 Hidden Traps & Fee Breakdown\n"
-                f"- Upfront Processing & Documentation Fees: ₹{audit.raw_processing_fee + audit.raw_documentation_charges:,.2f}\n"
-                f"- 18% Statutory GST on Banking Charges: ₹{audit.fee_gst_amount:,.2f}\n"
-                f"- Bundled Insurance Premium: ₹{audit.bundled_insurance_amount:,.2f}\n"
-                f"- RBI Fair Lending Score: **{audit.rbi_compliance_score} / 100**\n\n"
-                f"### 📋 Actionable Checklist for the Borrower\n"
-                f"1. **Opt-out of Mandatory Insurance**: Request the loan officer to unbundle the ₹{audit.bundled_insurance_amount:,.2f} insurance if you already possess adequate term cover.\n"
-                f"2. **Fee Waivers**: Ask for a full or 50% waiver on processing fees to save ₹{audit.total_upfront_fees_incl_gst:,.2f}.\n"
-                f"3. **KFS Verification**: Ensure the bank provides the mandatory RBI Key Fact Statement (KFS) matching these true APR numbers."
+                f"### 🚨 Executive Verdict & Treasury Reality Check\n\n"
+                f"As your Senior Finance Manager and Risk Auditor, the numbers indicate a significant divergence from the headline offer. "
+                f"While the bank marketed an annual interest rate of **{audit.stated_annual_rate:.2f}%**, your **True Effective APR (via Newton-Raphson IRR) is {audit.effective_annual_apr:.2f}%**. "
+                f"This represents an aggressive **+{audit.rate_inflation_spread:.2f}% rate spread padding** in the lender's favor.\n\n"
+                f"- **Sanctioned Facility Amount**: ₹{audit.principal:,.2f}\n"
+                f"- **Net Capital Realized (In-Hand Cash)**: **₹{audit.net_disbursed_amount:,.2f}** (Immediate cash leakage of ₹{audit.principal - audit.net_disbursed_amount:,.2f})\n"
+                f"- **Total Lifetime Borrowing Cost**: ₹{audit.total_cost_of_borrowing:,.2f}\n"
+                f"- **Institutional RBI Compliance Score**: **{audit.rbi_compliance_score} / 100**\n\n"
+                f"### 🔍 Forensic Breakdown of Hidden Charges & Traps\n\n"
+                f"- **18% Statutory GST (SAC 9971)**: The lender levies ₹{audit.raw_processing_fee + audit.raw_documentation_charges:,.2f} in origination charges, attracting ₹{audit.fee_gst_amount:,.2f} in GST. This immediately reduces your working capital at day zero.\n"
+                f"- **Bundled Insurance Policy**: ₹{audit.bundled_insurance_amount:,.2f} deducted upfront. *Regulatory note*: Under RBI fair-practice directives, credit-life insurance cannot be legally mandated as a pre-condition for loan sanction.\n"
+                + (f"- **EMI Amortization Discrepancy**: The sanctioned EMI of ₹{audit.stated_emi:,.2f} exceeds the true actuarial reducing EMI of ₹{audit.calculated_reducing_emi:,.2f} by **₹{emi_diff:,.2f} per month**. Over the {audit.tenure_months}-month tenure, this quietly drains **₹{lifetime_emi_loss:,.2f}** from your net worth.\n\n" if emi_diff > 5 else f"- **EMI Verification**: Stated EMI (₹{audit.stated_emi or audit.calculated_reducing_emi:,.2f}) matches exact mathematical reducing balance amortization.\n\n") +
+                f"### 📋 Institutional Negotiation Playbook for the Borrower\n\n"
+                f"Take these exact, non-negotiable points to the Bank Branch Manager or Chief Credit Underwriter:\n\n"
+                f"1. **Rectify EMI Calculation**: *\"Our independent audit shows the actuarial reducing balance EMI on ₹{audit.principal:,.2f} at {audit.stated_annual_rate}% is ₹{audit.calculated_reducing_emi:,.2f}, not ₹{audit.stated_emi or audit.calculated_reducing_emi:,.2f}. Adjust our repayment schedule immediately before disbursal.\"*\n"
+                f"2. **Demand 50%–100% Fee Clawback**: *\"Because the True APR reaches {audit.effective_annual_apr:.2f}%, we require a minimum 50% waiver on the ₹{audit.raw_processing_fee + audit.raw_documentation_charges:,.2f} upfront charges to bring the effective cost in line with market benchmarks.\"*\n"
+                f"3. **Zero Foreclosure Guarantee (RBI Circular RBI/2014-15/168)**: *\"Under RBI mandate, banks are strictly barred from levying prepayment or foreclosure charges on individual floating-rate loans. Provide explicit written confirmation in the sanction annexure that prepayment carries 0% penalty.\"*"
             )
