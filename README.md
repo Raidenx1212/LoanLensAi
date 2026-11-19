@@ -1,101 +1,128 @@
-# LoanLens (India-Focused AI Loan Auditor)
+# 🔍 LoanLens — AI-Powered Indian Loan Auditor
 
-LoanLens is an AI-powered financial auditor built specifically for Indian borrowers. It analyzes Bank Sanction Letters and Key Fact Statements (KFS) in PDF format to uncover hidden charges, verify stated vs. reducing balance EMIs, audit statutory 18% GST on banking fees, and compute the true cost of borrowing (**True APR / IRR**).
+> **Uncover hidden bank charges, verify stated vs. reducing EMIs, audit statutory 18% GST, and calculate your True APR in seconds.**
 
----
-
-## 🛡️ Core Architectural Rule: Strict LLM vs. Math Isolation
-
-1. **Zero Financial Hallucinations**: Under no circumstances does the LLM perform arithmetic, compound interest, fee summation, or APR calculations.
-2. **LLM Role (OpenRouter / Qwen-2.5-72B)**:
-   - Structured JSON parameter extraction from unstructured OCR/PDF text into strict Pydantic schemas.
-   - Translating and explaining deterministic audit findings in plain **English, Hindi (हिन्दी), or Kannada (ಕನ್ನಡ)** with actionable borrower negotiation checklists.
-3. **Python Financial Engine (`app/services/auditor.py`)**:
-   - 100% deterministic execution of reducing balance amortization formulas.
-   - Detection of deceptive flat rates disguised as reducing rates.
-   - Statutory Indian GST (18% under SAC 9971) calculation on processing & documentation charges.
-   - Exact True APR calculation using Newton-Raphson Internal Rate of Return (IRR).
-   - RBI regulatory compliance auditing (e.g. RBI circular RBI/2014-15/168 on floating rate foreclosure fee prohibition).
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Render-619DC6?style=for-the-badge&logo=render)](https://loanlens-ai-auditor.onrender.com)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-A6C8E2?style=for-the-badge&logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-F4BAA3?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
+[![RBI Fair Lending](https://img.shields.io/badge/RBI-KFS%20Compliant-F4F0E2?style=for-the-badge&logo=shield)](https://rbi.org.in)
 
 ---
 
-## 📁 Project Structure
+## 🛑 The Problem
 
-```text
-loanlens/
-├── backend/
-│   ├── app/
-│   │   ├── config.py                  # Pydantic Settings & environment variables
-│   │   ├── main.py                    # FastAPI app (UI serving + API routes)
-│   │   ├── core/
-│   │   │   └── database.py            # SQLite / PostgreSQL engine & session
-│   │   ├── models/
-│   │   │   └── audit_record.py        # SQLAlchemy audit persistence model
-│   │   ├── schemas/
-│   │   │   └── loan.py                # Pydantic schemas (Extraction, Audit, Comparison)
-│   │   └── services/
-│   │       ├── auditor.py             # Deterministic financial math & RBI audit engine
-│   │       ├── extractor.py           # PyMuPDF + Tesseract OCR fallback
-│   │       └── llm_service.py         # OpenRouter API client (Qwen-2.5-72B)
-│   ├── tests/
-│   │   ├── test_auditor.py            # Pure deterministic unit tests
-│   │   ├── test_api.py                # FastAPI endpoint tests
-│   │   └── generate_sample_pdf.py     # Generates realistic Indian bank sanction letters
-│   ├── requirements.txt
-│   └── .env.example
-├── frontend/
-│   ├── index.html                     # Responsive single-page web dashboard
-│   ├── package.json                   # React + Vite dependencies
-│   └── src/                           # Modular React components
-└── README.md
+When taking a personal, home, or vehicle loan in India, what banks advertise is rarely what you actually pay:
+
+1. **The "Headline Rate" Trap**: Lenders advertise attractive rates like **10.5%**, but after upfront deductions and processing fees, your **True Effective APR** often exceeds **16%**.
+2. **Disguised Flat Rates**: NBFCs often quote a "7% flat rate" which sounds cheap, but equals an exorbitant **13%+ reducing rate**.
+3. **Mandatory 18% GST on Fees**: Bank processing fees and documentation charges attract 18% GST (SAC 9971), reducing the actual cash disbursed to your bank account.
+4. **Forced Bundled Insurance**: Banks frequently deduct ₹10,000–₹25,000 upfront for "Loan Protection" or "Credit Shield" insurance without telling you it is legally optional.
+5. **Illegal Foreclosure Penalties**: Despite the Reserve Bank of India strictly prohibiting pre-payment penalties on floating rate personal loans (*RBI/2014-15/168*), banks still sneak 2–4% exit penalties into sanction letters.
+6. **Complex Fine Print**: Bank Sanction Letters and Key Fact Statements (KFS) are dense, multi-page PDFs full of legal jargon that everyday borrowers cannot decipher.
+
+---
+
+## 💡 The Solution
+
+**LoanLens** is an intelligent loan auditor designed specifically for Indian borrowers. It automates financial due diligence:
+
+- 📄 **Upload Any Sanction Letter PDF**: Instantly parses multi-page PDFs from SBI, HDFC, ICICI, Axis, Bajaj Finance, and any RBI-regulated lender.
+- 🧮 **Strict LLM / Math Isolation (Zero Hallucinations)**:
+  - **AI (OpenRouter / Qwen-2.5-72B)** *only* extracts structured loan terms from unstructured text and drafts plain-language explanations.
+  - **100% Deterministic Python Engine** calculates reducing balance EMIs, 18% GST, net in-hand cash, and **True APR via Newton-Raphson IRR**.
+- 🛡️ **RBI Regulatory Compliance Audit**: Automatically detects illegal foreclosure clauses, predatory rate spreads, and bundled insurance traps.
+- 🗣️ **Multilingual Borrower Guide**: Explains the audit findings in plain **English, Hindi (हिन्दी), or Kannada (ಕನ್ನಡ)** with a direct question-and-answer checklist to negotiate with your bank branch manager.
+- ⚖️ **Loan Offer Comparison**: Compare two competing loan offers side-by-side to find out which one saves you real cash.
+
+---
+
+## ⚡ How It Works
+
+```
+┌─────────────────────────────────┐
+│ 1. Upload Bank Sanction PDF/KFS │
+└────────────────┬────────────────┘
+                 ▼
+┌─────────────────────────────────┐
+│ 2. Ultra-Fast Text & Table OCR  │  <-- PyMuPDF (<0.05s) + Tesseract fallback
+└────────────────┬────────────────┘
+                 ▼
+┌─────────────────────────────────┐
+│ 3. Structured Parameter Parsing │  <-- Qwen-2.5-72B (Strictly Zero Math)
+└────────────────┬────────────────┘
+                 ▼
+┌─────────────────────────────────┐
+│ 4. Deterministic Financial Math │  <-- Reducing EMI, 18% GST, Newton-Raphson IRR
+└────────────────┬────────────────┘
+                 ▼
+┌─────────────────────────────────┐
+│ 5. RBI Compliance & True APR    │  <-- Flags illegal penalties, fee spreads
+└────────────────┬────────────────┘
+                 ▼
+┌─────────────────────────────────┐
+│ 6. Multilingual Borrower Report │  <-- Actionable checklist (EN / HI / KN)
+└─────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 Quickstart Guide
+## 🌐 Live Web App
 
-### 1. Setup Environment
-```powershell
-cd loanlens/backend
+Try the live application right now without installation:
+👉 **[https://loanlens-ai-auditor.onrender.com](https://loanlens-ai-auditor.onrender.com)**
 
-# Copy .env.example to .env and insert your OpenRouter API key
-Copy-Item .env.example .env
+---
+
+## 🚀 Quickstart (Run Locally)
+
+### 1. Clone & Setup
+```bash
+git clone https://github.com/Raidenx1212/LoanLensAi.git
+cd LoanLensAi/backend
+
+# Create virtual environment & install requirements
+python -m venv venv
+# On Windows: venv\Scripts\activate
+# On Linux/macOS: source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-Edit `backend/.env`:
+### 2. Configure Environment (Optional)
+```bash
+cp .env.example .env
+```
+Add your OpenRouter API key for high-accuracy AI extraction:
 ```env
 OPENROUTER_API_KEY=your_openrouter_api_key_here
-DATABASE_URL=sqlite:///./loanlens.db
 ```
-*(Note: If no API key is provided, LoanLens runs with an automatic local heuristic extraction and template explainer mode for offline development)*.
+*(Note: If no API key is set, LoanLens automatically runs in offline heuristic mode with full deterministic auditing).*
 
-### 2. Run Deterministic Unit Tests
-```powershell
+### 3. Run Tests & Launch Server
+```bash
+# Verify financial math unit tests
 python -m pytest tests/test_auditor.py -v
-```
 
-### 3. Launch LoanLens Server & Dashboard
-```powershell
-cd loanlens/backend
+# Start the application
 uvicorn app.main:app --reload --port 8000
 ```
 
-- **Interactive Web Dashboard**: [http://localhost:8000/](http://localhost:8000/)
-- **Swagger Interactive API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Health Check**: [http://localhost:8000/health](http://localhost:8000/health)
+Open **[http://localhost:8000](http://localhost:8000)** in your browser.
 
 ---
 
-## 📡 Key API Endpoints
+## 📑 Core API Endpoints
 
-### 1. `POST /api/v1/audit`
-- **Input**: Multipart `file` (PDF) + `language` (`en` | `hi` | `kn`)
-- **Pipeline**: PyMuPDF OCR $\rightarrow$ OpenRouter JSON extraction $\rightarrow$ Deterministic Python Audit $\rightarrow$ Multilingual Narrative Explanation $\rightarrow$ DB Storage.
+| Endpoint | Method | Description |
+|---|---|---|
+| `/` | `GET`, `HEAD` | Interactive Web Dashboard |
+| `/health` | `GET`, `HEAD` | Cloud health check probe |
+| `/api/v1/audit` | `POST` | Upload PDF $\rightarrow$ OCR $\rightarrow$ Deterministic Audit $\rightarrow$ Multilingual report |
+| `/api/v1/audit/manual` | `POST` | Direct JSON parameter audit without a PDF |
+| `/api/v1/compare` | `POST` | Side-by-side comparison of 2 loan offers ranked by total borrowing cost |
 
-### 2. `POST /api/v1/audit/manual`
-- **Input**: Direct JSON matching `ExtractedLoanTerms`.
-- **Purpose**: Direct calculation of True APR, GST, and Discrepancies without requiring a PDF upload.
+---
 
-### 3. `POST /api/v1/compare`
-- **Input**: Two loan offer objects (`loan_a`, `loan_b`).
-- **Output**: Strict ranking by Total Cost of Borrowing, showing the exact savings in Rupees and True APR comparison.
+## 📜 Regulatory References
+- **RBI Circular RBI/2014-15/168**: Strict prohibition on pre-payment/foreclosure penalties on floating-rate individual loans.
+- **RBI Key Fact Statement (KFS) Guidelines (April 2024)**: Mandatory disclosure of Total Cost of Borrowing and All-Inclusive APR.
+- **GST SAC 9971**: Statutory 18% Goods and Services Tax applicable to banking and loan processing fees in India.
