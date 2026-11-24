@@ -299,18 +299,20 @@
         </div>
 
         <div id="drop-zone" class="border-2 border-dashed border-slate-300 hover:border-slate-900 bg-white rounded-3xl p-8 sm:p-10 text-center transition-all cursor-pointer relative group shadow-sm hover:shadow-md">
-          <input type="file" id="pdf-input" accept=".pdf" class="absolute inset-0 opacity-0 cursor-pointer" onchange="handleFileSelect(event)">
-          <div class="w-16 h-16 rounded-2xl bg-slate-100 text-slate-800 flex items-center justify-center mx-auto mb-4 group-hover:scale-105 group-hover:bg-slate-900 group-hover:text-white transition-all shadow-sm">
-            <i data-lucide="upload-cloud" class="w-8 h-8"></i>
+          <input type="file" id="pdf-input" accept=".pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" onchange="handleFileSelect(event)">
+          <div class="pointer-events-none flex flex-col items-center justify-center">
+            <div class="w-16 h-16 rounded-2xl bg-slate-100 text-slate-800 flex items-center justify-center mx-auto mb-4 group-hover:scale-105 group-hover:bg-slate-900 group-hover:text-white transition-all shadow-sm">
+              <i data-lucide="upload-cloud" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-900 mb-1">Drop Bank Sanction Letter or KFS (PDF)</h3>
+            <p class="text-xs text-slate-500 mb-4">Compatible with SBI, HDFC, ICICI, Axis, Bajaj Finance, and all Indian lenders</p>
+            <span class="inline-flex items-center px-5 py-2.5 rounded-xl text-xs font-bold bg-[#0F172A] text-white group-hover:bg-slate-800 transition-all shadow-sm">
+              Select PDF File
+            </span>
+            
+            <!-- Selected File Confirmation Badge -->
+            <div id="selected-file-name" class="mt-4 text-xs text-slate-900 font-mono font-bold bg-emerald-50 border border-emerald-300 py-2 px-4 rounded-xl inline-flex items-center space-x-2 hidden"></div>
           </div>
-          <h3 class="text-base font-bold text-slate-900 mb-1">Drop Bank Sanction Letter or KFS (PDF)</h3>
-          <p class="text-xs text-slate-500 mb-4">Compatible with SBI, HDFC, ICICI, Axis, Bajaj Finance, and all Indian lenders</p>
-          <span class="inline-flex items-center px-5 py-2.5 rounded-xl text-xs font-bold bg-[#0F172A] text-white group-hover:bg-slate-800 transition-all shadow-sm">
-            Select PDF File
-          </span>
-          
-          <!-- Selected File Confirmation Badge -->
-          <div id="selected-file-name" class="mt-4 text-xs text-slate-900 font-mono font-bold bg-emerald-50 border border-emerald-300 py-2 px-4 rounded-xl inline-flex items-center space-x-2 hidden"></div>
         </div>
 
         <!-- Action Row -->
@@ -939,10 +941,6 @@
         console.error("System status check error:", e);
       }
     }
-      } catch (e) {
-        console.error("System status check error:", e);
-      }
-    }
 
     function setLanguage(lang) {
       currentLanguage = lang;
@@ -987,20 +985,58 @@
       contentEl.innerText = filtered.length > 0 ? filtered.join('\n') : `--- No lines match keyword "${q}" ---`;
     }
 
-    function handleFileSelect(event) {
-      const file = event.target.files[0];
-      if (file) {
-        selectedPdfFile = file;
-        const nameEl = document.getElementById('selected-file-name');
-        nameEl.innerHTML = `<i data-lucide="file-check-2" class="w-4 h-4 text-emerald-600"></i><span>Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)</span>`;
-        nameEl.classList.remove('hidden');
-        
-        const btn = document.getElementById('btn-run-audit');
-        btn.disabled = false;
-        btn.className = "w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-bold bg-[#0F172A] text-white hover:bg-slate-800 transition-all cursor-pointer flex items-center justify-center space-x-2 shadow-sm";
-        lucide.createIcons();
-        showToast(`Document loaded: ${file.name}`);
+    function setUploadedFile(file) {
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+        showToast("Please upload a valid PDF sanction letter.", true);
+        return;
       }
+      selectedPdfFile = file;
+      const nameEl = document.getElementById('selected-file-name');
+      nameEl.innerHTML = `<i data-lucide="file-check-2" class="w-4 h-4 text-emerald-600"></i><span>Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)</span>`;
+      nameEl.classList.remove('hidden');
+      
+      const btn = document.getElementById('btn-run-audit');
+      btn.disabled = false;
+      btn.className = "w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-bold bg-[#0F172A] text-white hover:bg-slate-800 transition-all cursor-pointer flex items-center justify-center space-x-2 shadow-sm";
+      lucide.createIcons();
+      showToast(`Document loaded: ${file.name}`);
+    }
+
+    function handleFileSelect(event) {
+      const file = event.target.files && event.target.files[0];
+      if (file) {
+        setUploadedFile(file);
+      }
+    }
+
+    function setupDragAndDrop() {
+      const dropZone = document.getElementById('drop-zone');
+      if (!dropZone) return;
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.classList.add('border-emerald-500', 'bg-emerald-50/40');
+        }, false);
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.classList.remove('border-emerald-500', 'bg-emerald-50/40');
+        }, false);
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const file = dt && dt.files && dt.files[0];
+        if (file) {
+          setUploadedFile(file);
+        }
+      }, false);
     }
 
     async function loadSampleSanctionLetter() {
@@ -1459,6 +1495,7 @@
     lucide.createIcons();
     checkSystemStatus();
     runLiveSimulator();
+    setupDragAndDrop();
   </script>
 </body>
 </html>
