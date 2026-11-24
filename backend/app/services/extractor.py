@@ -89,15 +89,37 @@ class DocumentExtractor:
             return ""
 
         # =====================================================================
-        # PASS 1: Ultra-Fast Native Vector Text Extraction (<10ms per page)
+        # PASS 1: Ultra-Fast Native Vector Text & Table Extraction (<20ms per page)
         # =====================================================================
         extracted_pages = []
         for page_idx in range(total_pages):
             page = doc[page_idx]
-            # get_text('text') reliably extracts all tabular cells, text blocks, and loan values
-            text = page.get_text("text").strip()
-            if text:
-                extracted_pages.append(f"--- Page {page_idx + 1} ---\n{text}")
+            page_sections = []
+
+            # 1. Extract any structured vector tables with find_tables()
+            try:
+                tabs = page.find_tables()
+                if tabs.tables:
+                    for t_idx, tab in enumerate(tabs.tables):
+                        rows = tab.extract()
+                        if rows:
+                            table_lines = [f"\n--- Page {page_idx + 1} Structured Table {t_idx + 1} ---"]
+                            for row in rows:
+                                clean_row = [str(cell or "").replace("\n", " ").strip() for cell in row]
+                                if any(clean_row):
+                                    table_lines.append(" | ".join(clean_row))
+                            page_sections.append("\n".join(table_lines))
+            except Exception:
+                pass
+
+            # 2. Extract geometrically sorted text (top-to-bottom, left-to-right)
+            # sort=True prevents column interleaving and scrambled multi-column table cells
+            sorted_text = page.get_text("text", sort=True).strip()
+            if sorted_text:
+                page_sections.append(f"\n--- Page {page_idx + 1} Document Text ---\n{sorted_text}")
+
+            if page_sections:
+                extracted_pages.append("\n".join(page_sections))
 
         combined_text = "\n\n".join(extracted_pages).strip()
 
@@ -148,6 +170,12 @@ class DocumentExtractor:
             return ""
 
         text = text.replace("\xa0", " ").replace("\u200b", "")
-        text = re.sub(r"[\u20B9₹]|Rs\.?|INR", "INR ", text)
+        # Standardize Rupee symbol or Indian font backtick (glyph 96 / ASCII `) to INR
+        text = re.sub(r"[\u20B9₹`]|Rs\.?|INR", "INR ", text)
+        # Fix OCR spaced numbers in Indian denominations e.g. "45 ,00 ,000" -> "45,00,000"
+        text = re.sub(r"(\d+)\s*,\s*(\d+)", r"\1,\2", text)
+        text = re.sub(r"(\d+)\s*,\s*(\d+)", r"\1,\2", text)
+        # Fix spaced decimals e.g. "10 .05" -> "10.05"
+        text = re.sub(r"(\d+)\s*\.\s*(\d+)", r"\1.\2", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()

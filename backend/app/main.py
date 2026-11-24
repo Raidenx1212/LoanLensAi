@@ -114,7 +114,7 @@ def system_status():
     return {
         "openrouter_configured": has_api_key and not is_placeholder,
         "mistral_configured": has_mistral_key and not is_mistral_placeholder,
-        "model": getattr(settings, "DEFAULT_LLM_MODEL", "anthropic/claude-3.5-sonnet"),
+        "model": getattr(settings, "DEFAULT_LLM_MODEL", "google/gemini-2.5-flash"),
         "pdf_parser": "Mistral OCR (mistral-ocr-latest) + PyMuPDF Vector Engine",
         "fallback_available": True,
     }
