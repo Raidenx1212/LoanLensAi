@@ -118,7 +118,7 @@ class OpenRouterLLMService:
             "}"
         )
 
-        user_content = f"Sanction Letter / KFS Content:\n```markdown\n{raw_document_text[:16000]}\n```"
+        user_content = f"Sanction Letter / KFS Content:\n```markdown\n{raw_document_text[:60000]}\n```"
 
         messages = [
             {"role": "system", "content": system_prompt},

@@ -200,6 +200,7 @@ class LoanAuditReport(BaseModel):
 
     # Debug & Transparency Metadata
     extraction_method: str = "openrouter_llm"
+    total_pages_analyzed: int = Field(default=1, description="Total number of document pages extracted and audited")
     raw_extracted_text_preview: Optional[str] = None
 
 

@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import asyncio
 from typing import Optional, List
 
@@ -175,7 +176,11 @@ async def audit_loan_document(
     # 3. Pure Deterministic Financial Audit (Python Math Engine - offloaded to thread)
     audit_result = await asyncio.to_thread(DeterministicLoanAuditor.audit_loan, extracted_terms)
     audit_result.extraction_method = extracted_terms.extraction_method
-    audit_result.raw_extracted_text_preview = raw_text[:2500]
+
+    # Multi-page extraction metadata & full multi-page preview
+    pages_found = set(re.findall(r"--- Page (\d+)", raw_text))
+    audit_result.total_pages_analyzed = len(pages_found) if pages_found else 1
+    audit_result.raw_extracted_text_preview = raw_text[:60000]
 
     # 4. Multilingual Consumer Explainer
     try:
