@@ -1,8 +1,11 @@
 import io
 import re
 import gc
+import base64
 from typing import Optional
 from PIL import Image
+import httpx
+from app.config import settings
 
 try:
     import pymupdf as fitz
@@ -20,14 +23,60 @@ except ImportError:
 
 class DocumentExtractor:
     """
-    High-Performance, Cloud-Safe Indian Bank Sanction Letter Extractor.
-    Designed for low-resource environments (Render 512MB RAM / 0.1 CPU).
-    - Instant vector text extraction for digital PDFs (<0.05s).
-    - Fast 2-page max OCR for scanned image PDFs (<15s) with strict memory cleanup.
+    High-Performance Indian Bank Sanction Letter Extractor.
+    - SOTA Mistral OCR (`mistral-ocr-latest`) for highest accuracy table & scanned PDF parsing.
+    - Ultra-fast native vector text extraction (<0.05s) for instant digital parsing.
+    - Cloud-optimized Tesseract fallback for environments without external keys.
     """
 
     @classmethod
-    def extract_text_from_pdf_bytes(cls, pdf_bytes: bytes) -> str:
+    def extract_with_mistral_ocr(cls, pdf_bytes: bytes, mistral_api_key: Optional[str] = None) -> Optional[str]:
+        """Directly invokes Mistral AI's state-of-the-art document OCR endpoint."""
+        api_key = mistral_api_key or getattr(settings, "MISTRAL_API_KEY", "")
+        if not api_key:
+            return None
+
+        try:
+            base64_data = base64.b64encode(pdf_bytes).decode("utf-8")
+            payload = {
+                "model": "mistral-ocr-latest",
+                "document": {
+                    "type": "document_url",
+                    "document_url": f"data:application/pdf;base64,{base64_data}",
+                },
+                "include_image_base64": False,
+            }
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            with httpx.Client(timeout=45.0) as client:
+                resp = client.post("https://api.mistral.ai/v1/ocr", json=payload, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                pages = data.get("pages", [])
+                markdown_pages = []
+                for p in pages:
+                    idx = p.get("index", 0)
+                    md = p.get("markdown", "").strip()
+                    if md:
+                        markdown_pages.append(f"--- Page {idx + 1} (Mistral OCR) ---\n{md}")
+                if markdown_pages:
+                    return cls._clean_extracted_text("\n\n".join(markdown_pages))
+        except Exception as e:
+            # If Mistral OCR fails (e.g. invalid key or network timeout), gracefully fall back
+            pass
+        return None
+
+    @classmethod
+    def extract_text_from_pdf_bytes(cls, pdf_bytes: bytes, mistral_api_key: Optional[str] = None) -> str:
+        # =====================================================================
+        # PASS 0: SOTA Mistral OCR (`mistral-ocr-latest`) if API key is present
+        # =====================================================================
+        mistral_text = cls.extract_with_mistral_ocr(pdf_bytes, mistral_api_key)
+        if mistral_text and len(mistral_text) >= 50:
+            return mistral_text
+
         if fitz is None:
             raise RuntimeError(
                 "PyMuPDF is not installed. Please install it using `pip install pymupdf`."

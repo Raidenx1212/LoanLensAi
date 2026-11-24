@@ -26,9 +26,9 @@ When taking a personal, home, or vehicle loan in India, what banks advertise is 
 
 **LoanLens** is an intelligent loan auditor designed specifically for Indian borrowers. It automates financial due diligence:
 
-- 📄 **Upload Any Sanction Letter PDF**: Instantly parses multi-page PDFs from SBI, HDFC, ICICI, Axis, Bajaj Finance, and any RBI-regulated lender.
+- 📄 **Upload Any Sanction Letter PDF**: Instantly parses multi-page PDFs from SBI, HDFC, ICICI, Axis, Bajaj Finance, and any RBI-regulated lender via **Mistral OCR (`mistral-ocr-latest`)** and high-speed PyMuPDF.
 - 🧮 **Strict LLM / Math Isolation (Zero Hallucinations)**:
-  - **AI (OpenRouter / Qwen-2.5-72B)** *only* extracts structured loan terms from unstructured text and drafts plain-language explanations.
+  - **AI (OpenRouter / Claude 3.5 Sonnet, GPT-4o, Gemini 2.0 Flash)** *only* extracts structured loan terms verbatim from unstructured text and drafts plain-language explanations.
   - **100% Deterministic Python Engine** calculates reducing balance EMIs, 18% GST, net in-hand cash, and **True APR via Newton-Raphson IRR**.
 - 🛡️ **RBI Regulatory Compliance Audit**: Automatically detects illegal foreclosure clauses, predatory rate spreads, and bundled insurance traps.
 - 🗣️ **Multilingual Borrower Guide**: Explains the audit findings in plain **English, Hindi (हिन्दी), or Kannada (ಕನ್ನಡ)** with a direct question-and-answer checklist to negotiate with your bank branch manager.
@@ -44,11 +44,11 @@ When taking a personal, home, or vehicle loan in India, what banks advertise is 
 └────────────────┬────────────────┘
                  ▼
 ┌─────────────────────────────────┐
-│ 2. Ultra-Fast Text & Table OCR  │  <-- PyMuPDF (<0.05s) + Tesseract fallback
+│ 2. SOTA Mistral OCR & Parser    │  <-- Mistral OCR (mistral-ocr-latest) + PyMuPDF
 └────────────────┬────────────────┘
                  ▼
 ┌─────────────────────────────────┐
-│ 3. Structured Parameter Parsing │  <-- Qwen-2.5-72B (Strictly Zero Math)
+│ 3. Zero-Hallucination Extraction│  <-- Claude 3.5 Sonnet / GPT-4o (Strictly Zero Math)
 └────────────────┬────────────────┘
                  ▼
 ┌─────────────────────────────────┐

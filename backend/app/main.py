@@ -108,10 +108,14 @@ def system_status():
     has_api_key = bool(settings.OPENROUTER_API_KEY)
     is_placeholder = "your_openrouter" in settings.OPENROUTER_API_KEY.lower() if has_api_key else False
 
+    has_mistral_key = bool(getattr(settings, "MISTRAL_API_KEY", ""))
+    is_mistral_placeholder = "your_mistral" in settings.MISTRAL_API_KEY.lower() if has_mistral_key else False
+
     return {
         "openrouter_configured": has_api_key and not is_placeholder,
-        "model": "qwen/qwen-2.5-72b-instruct",
-        "pdf_parser": "PyMuPDF Native Table & Text Extractor (Memory-Optimized)",
+        "mistral_configured": has_mistral_key and not is_mistral_placeholder,
+        "model": getattr(settings, "DEFAULT_LLM_MODEL", "anthropic/claude-3.5-sonnet"),
+        "pdf_parser": "Mistral OCR (mistral-ocr-latest) + PyMuPDF Vector Engine",
         "fallback_available": True,
     }
 
@@ -125,6 +129,8 @@ async def audit_loan_document(
     file: UploadFile = File(..., description="PDF Sanction Letter or Key Fact Statement (KFS)"),
     language: Language = Form(default=Language.ENGLISH, description="Target language: en, hi, or kn"),
     openrouter_api_key: Optional[str] = Form(default=None, description="Optional OpenRouter API key"),
+    mistral_api_key: Optional[str] = Form(default=None, description="Optional Mistral AI API key for Mistral OCR"),
+    model_name: Optional[str] = Form(default=None, description="Selected AI model (e.g. anthropic/claude-3.5-sonnet)"),
     db: Session = Depends(get_db),
 ):
     if not file.filename.lower().endswith(".pdf"):
@@ -133,16 +139,18 @@ async def audit_loan_document(
             detail="Only PDF documents are supported for loan auditing.",
         )
 
-    # 1. High-Fidelity PDF & Table extraction using PyMuPDF (offloaded to thread to avoid blocking event loop)
+    # 1. High-Fidelity PDF & Table extraction using Mistral OCR or PyMuPDF
     try:
         pdf_bytes = await file.read()
-        raw_text = await asyncio.to_thread(DocumentExtractor.extract_text_from_pdf_bytes, pdf_bytes)
+        raw_text = await asyncio.to_thread(
+            DocumentExtractor.extract_text_from_pdf_bytes, pdf_bytes, mistral_api_key
+        )
         if not raw_text.strip():
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=(
                     "Unable to extract text from the uploaded PDF. "
-                    "If this is a scanned photocopy or camera photo, please ensure it has legible resolution."
+                    "If this is a scanned photocopy or camera photo, please provide a Mistral API key for Mistral OCR, or ensure high resolution."
                 ),
             )
     except HTTPException:
@@ -153,10 +161,10 @@ async def audit_loan_document(
             detail=f"Error occurred while processing PDF text: {str(e)}",
         )
 
-    # 2. OpenRouter Qwen Structured Extraction (STRICT: Zero math)
+    # 2. Flagship Zero-Hallucination Structured Extraction (STRICT: Zero math)
     try:
         extracted_terms = await llm_service.extract_loan_parameters(
-            raw_text, custom_api_key=openrouter_api_key
+            raw_text, custom_api_key=openrouter_api_key, model_name=model_name
         )
     except Exception as e:
         raise HTTPException(
@@ -169,10 +177,13 @@ async def audit_loan_document(
     audit_result.extraction_method = extracted_terms.extraction_method
     audit_result.raw_extracted_text_preview = raw_text[:2500]
 
-    # 4. Multilingual Consumer Explainer (OpenRouter Qwen)
+    # 4. Multilingual Consumer Explainer
     try:
         explanation = await llm_service.generate_multilingual_explanation(
-            audit=audit_result, language=language, custom_api_key=openrouter_api_key
+            audit=audit_result,
+            language=language,
+            custom_api_key=openrouter_api_key,
+            model_name=model_name,
         )
         audit_result.explanation = explanation
     except Exception as e:
@@ -211,13 +222,17 @@ async def audit_manual_loan(
     payload: ExtractedLoanTerms,
     language: Language = Language.ENGLISH,
     openrouter_api_key: Optional[str] = None,
+    model_name: Optional[str] = None,
 ):
     """Directly audit structured loan terms without needing a PDF upload."""
     audit_result = await asyncio.to_thread(DeterministicLoanAuditor.audit_loan, payload)
     audit_result.extraction_method = payload.extraction_method
     try:
         explanation = await llm_service.generate_multilingual_explanation(
-            audit=audit_result, language=language, custom_api_key=openrouter_api_key
+            audit=audit_result,
+            language=language,
+            custom_api_key=openrouter_api_key,
+            model_name=model_name,
         )
         audit_result.explanation = explanation
     except Exception as e:

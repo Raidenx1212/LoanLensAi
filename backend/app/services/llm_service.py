@@ -16,17 +16,25 @@ logger = logging.getLogger(__name__)
 
 
 class OpenRouterLLMService:
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or settings.OPENROUTER_API_KEY
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
-        self.model = "qwen/qwen-2.5-72b-instruct"
+        # Default to Claude 3.5 Sonnet: Industry benchmark for zero-hallucination data extraction
+        self.model = model or getattr(settings, "DEFAULT_LLM_MODEL", "anthropic/claude-3.5-sonnet")
 
     async def _call_openrouter(
-        self, messages: list, temperature: float = 0.0, response_format: dict = None, custom_api_key: Optional[str] = None
+        self,
+        messages: list,
+        temperature: float = 0.0,
+        response_format: dict = None,
+        custom_api_key: Optional[str] = None,
+        model_name: Optional[str] = None,
     ) -> str:
         key = custom_api_key or self.api_key or settings.OPENROUTER_API_KEY
         if not key:
             raise ValueError("OPENROUTER_API_KEY is not configured.")
+
+        chosen_model = model_name or self.model
 
         headers = {
             "Authorization": f"Bearer {key}",
@@ -35,7 +43,7 @@ class OpenRouterLLMService:
             "Content-Type": "application/json",
         }
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": chosen_model,
             "messages": messages,
             "temperature": temperature,
         }
@@ -49,12 +57,15 @@ class OpenRouterLLMService:
             return data["choices"][0]["message"]["content"]
 
     async def extract_loan_parameters(
-        self, raw_document_text: str, custom_api_key: Optional[str] = None
+        self,
+        raw_document_text: str,
+        custom_api_key: Optional[str] = None,
+        model_name: Optional[str] = None,
     ) -> ExtractedLoanTerms:
         """
         STRICT ARCHITECTURAL RULE:
         The LLM extracts numbers verbatim as found in the text.
-        It must never calculate EMIs, GST, or APR.
+        It must never calculate EMIs, GST, or APR. Zero hallucinations.
         """
         active_key = custom_api_key or self.api_key or settings.OPENROUTER_API_KEY
 
@@ -66,18 +77,19 @@ class OpenRouterLLMService:
             return self._heuristic_fallback_extraction(raw_document_text)
 
         system_prompt = (
-            "You are a Senior Indian Banking & Fintech Document Specialist.\n"
-            "Your task is to extract exact loan parameters from Indian Bank Sanction Letters or "
-            "RBI Key Fact Statements (KFS).\n\n"
-            "STRICT ARCHITECTURAL RULE:\n"
-            "1. Extract ONLY the exact parameters explicitly written in the document.\n"
-            "2. DO NOT perform any mathematical calculations, interest compounding, or rounding.\n"
-            "3. If a value (such as processing fee or documentation charges) is not mentioned, return 0.0.\n"
-            "4. Convert tenure to months (e.g., '5 Years' -> 60, '15 Years' -> 180, '20 Years' -> 240).\n"
-            "5. Convert Lakhs/Crores to numerical INR (e.g. '15 Lakhs' or '15.5 Lac' -> 1550000.0, '1 Crore' -> 10000000.0).\n"
-            "6. Distinguish whether interest is stated as 'reducing' balance or 'flat' balance.\n"
-            "7. Detect whether any insurance (credit shield, life/health) is added to the principal or bundled.\n"
-            "8. Identify any foreclosure/pre-payment penalty clauses verbatim.\n\n"
+            "You are a Forensic Financial Document Extractor for Indian Banking documents.\n"
+            "Your task is to extract exact numerical loan terms verbatim from Indian Bank Sanction Letters "
+            "or RBI Key Fact Statements (KFS).\n\n"
+            "CRITICAL ZERO-HALLUCINATION RULES:\n"
+            "1. Extract ONLY values that are explicitly written in the provided text.\n"
+            "2. NEVER guess, assume, calculate, or estimate numbers.\n"
+            "3. If a fee, insurance, or charge is NOT explicitly stated in the document, return 0.0.\n"
+            "4. If stated monthly EMI is not explicitly mentioned as an exact figure, return null.\n"
+            "5. Convert tenure to total calendar months (e.g., '3 Years' -> 36, '15 Years' -> 180).\n"
+            "6. Convert Indian denominations to numerical INR (e.g. '45 Lakhs' -> 4500000.0, '5 Lac' -> 500000.0, '1.5 Crore' -> 15000000.0).\n"
+            "7. Distinguish whether interest is stated as reducing balance or flat balance.\n"
+            "8. Check for any bundled credit-shield or life insurance mentioned in deductions.\n"
+            "9. Extract any early foreclosure/pre-payment penalty clause verbatim.\n\n"
             "Return ONLY a valid JSON object matching this schema:\n"
             "{\n"
             '  "lender_name": "string or null",\n'
@@ -104,11 +116,13 @@ class OpenRouterLLMService:
         ]
 
         try:
+            chosen_model = model_name or self.model
             response_text = await self._call_openrouter(
                 messages=messages,
                 temperature=0.0,
                 response_format={"type": "json_object"},
                 custom_api_key=active_key,
+                model_name=chosen_model,
             )
             clean_str = response_text.strip()
             if clean_str.startswith("```json"):
@@ -119,16 +133,20 @@ class OpenRouterLLMService:
                 clean_str = clean_str[:-3]
             clean_json = json.loads(clean_str.strip())
             extracted = ExtractedLoanTerms(**clean_json)
-            extracted.extraction_method = "openrouter_llm"
+            extracted.extraction_method = f"ai_model ({chosen_model})"
             return extracted
         except Exception as e:
             logger.error(f"OpenRouter extraction failed: {e}. Falling back to heuristic extractor.")
             fallback = self._heuristic_fallback_extraction(raw_document_text)
-            fallback.extraction_method = f"offline_heuristic_fallback (LLM Error: {str(e)[:60]})"
+            fallback.extraction_method = f"offline_heuristic_fallback (Error: {str(e)[:60]})"
             return fallback
 
     async def generate_multilingual_explanation(
-        self, audit: LoanAuditReport, language: Language, custom_api_key: Optional[str] = None
+        self,
+        audit: LoanAuditReport,
+        language: Language,
+        custom_api_key: Optional[str] = None,
+        model_name: Optional[str] = None,
     ) -> str:
         """
         Explains deterministic audit findings to an Indian borrower.
@@ -199,10 +217,12 @@ class OpenRouterLLMService:
         ]
 
         try:
+            chosen_model = model_name or self.model
             explanation = await self._call_openrouter(
                 messages=messages,
                 temperature=0.3,
                 custom_api_key=active_key,
+                model_name=chosen_model,
             )
             return explanation
         except Exception:

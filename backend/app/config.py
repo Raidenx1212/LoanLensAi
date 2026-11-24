@@ -25,6 +25,8 @@ for ef in env_files:
 class Settings(BaseSettings):
     PROJECT_NAME: str = "LoanLens AI Auditor"
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+    MISTRAL_API_KEY: str = os.getenv("MISTRAL_API_KEY", "")
+    DEFAULT_LLM_MODEL: str = os.getenv("DEFAULT_LLM_MODEL", "anthropic/claude-3.5-sonnet")
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL", "sqlite:///./loanlens.db"
     )
