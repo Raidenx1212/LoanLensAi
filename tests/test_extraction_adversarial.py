@@ -13,6 +13,8 @@ from app.schemas.loan import (
     ChargeCategory,
     CrossValidationStatus,
     FieldStatus,
+    GSTClassification,
+    ThirdPartyRecoveryMethod,
     InterestRateType,
     Language,
 )
@@ -90,11 +92,13 @@ def test_adversarial_sanction_letter_full_pipeline():
     assert report.calculated_reducing_emi == pytest.approx(15602.07, abs=0.05)
     assert report.is_emi_matching is True
 
-    # 2. Charge separation: confirmed upfront recoveries before GST = 28,118; conditional = 590
+    # 2. Charge separation: confirmed upfront recoveries before GST = 28,118; conditional = 590 (not summed)
     assert report.raw_processing_fee == pytest.approx(15000.0, abs=0.01)
     assert report.other_cash_recoveries == pytest.approx(13118.0, abs=0.01)
     assert report.known_upfront_recoveries_excl_tax == pytest.approx(28118.0, abs=0.01)
-    assert report.conditional_charges_total == pytest.approx(590.0, abs=0.01)
+    assert report.conditional_charges_total is None
+    assert len(report.conditional_charges) == 1
+    assert report.conditional_charges[0].amount == pytest.approx(590.0, abs=0.01)
 
     upfront_charges = [c for c in report.charges_breakdown if c.category == ChargeCategory.CONFIRMED_UPFRONT]
     cond_charges = [c for c in report.charges_breakdown if c.category == ChargeCategory.CONDITIONAL]
@@ -231,3 +235,213 @@ def test_hero_housing_multipage_real_pdf():
     assert report.rbi_compliance_score is None
     # Bounce charge on Page 4 captured as conditional
     assert any(c.category == ChargeCategory.CONDITIONAL and c.source_page == 4 for c in report.charges_breakdown)
+
+
+def test_northstar_three_page_adversarial_sanction_letter():
+    """
+    Verifies the 3-page Northstar Housing Finance adversarial sanction communication
+    including percentage-of-principal fee, financed credit-protection premium,
+    multi-page charges/reserves totaling ₹28,118 before tax, conditional ₹590 mandate fee,
+    UNKNOWN indirect tax & final disbursement, gated APR, and blocked negotiation script.
+    """
+    doc = fitz.open()
+    p1 = doc.new_page()
+    p1.insert_text(
+        (40, 40),
+        (
+            "NORTHSTAR HOUSING FINANCE LTD.\n"
+            "Illustrative Sanction Communication | Ref: NSHF/HL/26/11842\n"
+            "1. Key facility particulars\n"
+            "Facility | Home loan - completed residential property\n"
+            "Sanctioned principal | Rs. 12,00,000.00\n"
+            "Tenure | 120 monthly instalments\n"
+            "Interest rate | 9.25% p.a. floating; monthly rests; reducing balance\n"
+            "Indicative first EMI | Rs. 15,602.07\n"
+            "2. Disbursement mechanics\n"
+            "The sanctioned principal is Rs. 12,00,000. At the applicant's request, the optional credit-protection premium of Rs. 18,600 is "
+            "added to the facility at first disbursement rather than collected separately. The opening amount on which instalments are "
+            "scheduled will therefore be Rs. 12,18,600, subject to final booking.\n"
+            "The final disbursement advice, rather than this summary, will evidence the net remittance.\n"
+            "3. Charges and recoveries\n"
+            "A-1 | File handling and credit assessment | 1.25% of sanctioned principal; minimum Rs. 4,000\n"
+            "A-2 | Applicable indirect tax on A-1 | At prevailing rate, collected with A-1\n"
+            "B-4 | Document custody and instrument processing | Rs. 3,250, one time\n"
+            "C-2 | Property title search and technical panel visit | Rs. 6,800; payable to empanelled agency\n"
+            "D-7 | Electronic registry filing and security-interest notation | Rs. 118 including applicable tax\n"
+            "For operational convenience, a facility activation reserve of Rs. 2,950 may be debited when the loan account is opened. The reserve is\n"
+            "non-interest-bearing and adjusted against account-opening and mandate-registration work; any unutilised balance, if applicable, is reconciled after the\n"
+            "initial servicing cycle.\n"
+        ),
+        fontsize=9,
+    )
+    p2 = doc.new_page()
+    p2.insert_text(
+        (40, 40),
+        (
+            "Where an optional protection product is selected, the premium in Section 2 is financed.\n"
+            "4. Repayment and servicing terms\n"
+            "Instalments are payable by NACH/e-mandate. A mandate setup and verification cost of Rs. 590 inclusive of tax\n"
+            "may be collected if the account is registered through the assisted channel. No such amount is payable where the\n"
+            "self-service mandate route is accepted without manual intervention.\n"
+            "If an instalment remains unpaid beyond its due date, an overdue servicing charge of Rs. 450 per event may be\n"
+            "applied, in addition to applicable penal charges calculated on the overdue amount at 2.00% per annum for the\n"
+            "period of default, subject to the governing agreement and applicable law. Penal charges are not capitalised.\n"
+        ),
+        fontsize=9,
+    )
+    p3 = doc.new_page()
+    p3.insert_text(
+        (40, 40),
+        (
+            "ANNEXURE I - SERVICE AND ACCOUNT NOTES\n"
+            "Account opening note: The facility activation reserve referred to in Section 3 is recorded under internal\n"
+            "service code FAR-2950. It is not a refundable security deposit.\n"
+            "Tax note: Tax on lender-supplied services is charged at the rate applicable on the date of supply. For file\n"
+            "handling fee A-1, tax is calculated separately and is not included in the percentage quoted.\n"
+            "Disbursement note: The title search and technical panel visit fee may be paid directly by the applicant or\n"
+            "recovered by the lender against the agency invoice.\n"
+            "Premium note: The optional credit-protection premium is financed and forms part of the opening loan balance.\n"
+            "Account servicing note: The assisted-channel mandate fee applies only where manual verification is requested\n"
+            "or required. A failed debit may also trigger bank charges levied by the borrower's bank; these third-party\n"
+            "charges are not quantified here.\n"
+            "ANNEXURE II - ILLUSTRATIVE CASH FLOW RECONCILIATION\n"
+            "Sanctioned principal | Rs. 12,00,000.00 | Approved facility\n"
+            "Optional credit-protection premium | Rs. 18,600.00 | Added to opening financed balance\n"
+            "Opening financed balance | Rs. 12,18,600.00 | Basis for indicative EMI\n"
+            "File handling fee | 1.25% of sanctioned principal | Cash recovery; tax additional\n"
+            "Document custody / instrument processing | Rs. 3,250.00 | One-time cash recovery\n"
+            "Facility activation reserve | Rs. 2,950.00 | Account-opening debit\n"
+        ),
+        fontsize=9,
+    )
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    pages = DocumentExtractor.extract_pages_from_pdf_bytes(pdf_bytes)
+    assert len(pages) == 3
+
+    svc = OpenRouterLLMService()
+    terms = svc._deterministic_page_extract(pages)
+    report = DeterministicLoanAuditor.audit_loan(terms)
+
+    assert report.lender_name == "NORTHSTAR HOUSING FINANCE LTD"
+    assert report.principal == 1200000.0
+    assert report.stated_annual_rate == 9.25
+    assert report.interest_type == InterestRateType.FLOATING
+    assert report.tenure_months == 120
+    assert report.bundled_insurance_amount == 18600.0
+    assert report.is_insurance_capitalized is True
+    assert report.opening_financed_balance == 1218600.0
+    assert report.stated_emi == pytest.approx(15602.07, abs=0.05)
+    assert report.calculated_reducing_emi == pytest.approx(15602.07, abs=0.05)
+    assert report.is_emi_matching is True
+
+    # Individual charge reconciliation: exact 5 upfront items totaling ₹28,118 before GST
+    upfront = [c for c in report.charges_breakdown if c.category == ChargeCategory.CONFIRMED_UPFRONT]
+    upfront_amounts = sorted(c.amount for c in upfront)
+    assert upfront_amounts == [118.0, 2950.0, 3250.0, 6800.0, 15000.0]
+    assert report.raw_processing_fee == pytest.approx(15000.0, abs=0.01)
+    assert report.known_upfront_recoveries_excl_tax == pytest.approx(28118.0, abs=0.01)
+
+    # Check repeated annexure disclosures deduplicated & tracked on repeated_on_pages
+    reserve_item = next(c for c in upfront if "activation reserve" in c.name.lower())
+    assert 3 in reserve_item.repeated_on_pages
+    assert "FAR-2950" in (reserve_item.notes or "")
+
+    title_item = next(c for c in upfront if "title search" in c.name.lower())
+    assert 3 in title_item.repeated_on_pages
+    assert "agency" in (title_item.notes or "").lower()
+
+    # Conditional charges MUST NOT be summed into one misleading total; each tracked individually
+    cond = [c for c in report.charges_breakdown if c.category == ChargeCategory.CONDITIONAL]
+    assert sorted(c.amount for c in cond) == [450.0, 590.0]
+    assert report.conditional_charges_total is None
+    assert len(report.conditional_charges) == 3
+
+    mandate_fee = next(c for c in report.conditional_charges if c.amount == 590.0)
+    assert mandate_fee.frequency == "ONE_TIME"
+    assert mandate_fee.caused_by_borrower_action is True
+    assert "assisted" in (mandate_fee.trigger_condition or "").lower()
+
+    overdue_fee = next(c for c in report.conditional_charges if c.amount == 450.0)
+    assert overdue_fee.frequency == "PER_OVERDUE_EVENT"
+    assert overdue_fee.caused_by_borrower_action is True
+    assert overdue_fee.payment_timing == "per overdue event"
+
+    # Contingent penal charge (2.00% p.a., NOT capitalized)
+    contingent = [c for c in report.charges_breakdown if c.category == ChargeCategory.CONTINGENT]
+    assert len(contingent) == 1
+    assert contingent[0].rate_pct == pytest.approx(2.0, abs=0.01)
+    assert contingent[0].is_capitalized is False
+    assert contingent[0].frequency == "PER_ANNUM_ON_OVERDUE"
+    assert contingent[0].caused_by_borrower_action is True
+    assert report.penal_charge_rate_pct == pytest.approx(2.0, abs=0.01)
+    assert report.penal_charges_capitalized is False
+    assert "not capitalis" in (contingent[0].notes or "").lower()
+
+    # GST Classification: Report-level & exact service linkage
+    assert report.gst_classification == GSTClassification.GST_POTENTIALLY_APPLICABLE
+    file_handling_fee = next(c for c in upfront if "file handling" in c.name.lower())
+    assert file_handling_fee.gst_classification == GSTClassification.GST_POTENTIALLY_APPLICABLE
+    assert "file handling" in (file_handling_fee.gst_related_service or "").lower()
+    registry_fee = next(c for c in upfront if "registry" in c.name.lower())
+    assert registry_fee.gst_classification == GSTClassification.GST_INCLUDED
+
+    # Third-party recovery classification
+    assert title_item.third_party_recovery_method == ThirdPartyRecoveryMethod.RECOVERED_AGAINST_AGENCY_INVOICE
+    third_party = [c for c in report.charges_breakdown if c.category == ChargeCategory.THIRD_PARTY]
+    assert len(third_party) == 1
+    assert third_party[0].amount is None
+    assert third_party[0].source_page == 3
+    assert third_party[0].third_party_recovery_method == ThirdPartyRecoveryMethod.PAID_DIRECTLY_BY_BORROWER
+
+    # Every charge must retain exact page, source_section, raw_text, confidence, and clean evidence_snippet
+    for c in report.charges_breakdown:
+        assert c.currency == "INR"
+        assert c.payment_timing
+        assert c.mandatory_status
+        assert c.dedup_id
+        assert c.source_page is not None
+        assert c.source_section
+        assert c.evidence_snippet
+        assert c.raw_text
+        assert c.extraction_confidence in ("HIGH", "MEDIUM", "LOW")
+
+    # No duplicate borrower-facing discrepancies; every finding retains full provenance
+    disc_keys = [(d.code, d.title.strip().lower()) for d in report.discrepancies]
+    assert len(disc_keys) == len(set(disc_keys))
+    for d in report.discrepancies:
+        assert d.source_page is not None
+        assert d.source_pages
+        assert d.evidence_snippet
+        assert d.extraction_confidence in ("HIGH", "MEDIUM", "LOW")
+
+    # Borrower-facing local explanation preserves individual conditional breakdown without summing
+    explanation = svc._local_template_explanation(report, "english")
+    assert "1,040" not in explanation
+    assert "GST_POTENTIALLY_APPLICABLE" in explanation
+    assert "RECOVERED_AGAINST_AGENCY_INVOICE" in explanation
+
+    # Operational, tax, financed insurance, third-party, mandate & failed-debit notes present
+    note_topics = {n.topic for n in report.document_notes}
+    assert {
+        "Facility Activation Reserve",
+        "Financed Insurance Explanation",
+        "Tax Treatment of Processing Fee",
+        "Third-Party Agency Recovery Arrangement",
+        "Assisted-Channel Mandate Fee",
+        "Bank Charges on Failed Debits",
+    }.issubset(note_topics)
+
+    # Unknown indirect tax & missing net disbursement remain None (UNKNOWN); APR withheld; script blocked
+    assert report.fee_gst_amount is None
+    assert report.net_disbursed_amount is None
+    assert report.is_irr_computable is False
+    assert report.effective_annual_apr is None
+    assert report.rbi_compliance_score is None
+    assert report.negotiation_script_blocked is True
+
+    cv_map = {cv.check_name: cv for cv in report.cross_validations}
+    assert cv_map["Principal vs Opening Financed Balance"].status == CrossValidationStatus.PASS
+    assert cv_map["Insurance vs Capitalized Principal"].status == CrossValidationStatus.PASS
+    assert cv_map["Stated EMI vs Independently Calculated EMI"].status == CrossValidationStatus.PASS

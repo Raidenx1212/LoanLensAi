@@ -37,8 +37,25 @@ class FieldStatus(str, Enum):
 class ChargeCategory(str, Enum):
     CONFIRMED_UPFRONT = "confirmed_upfront"
     CONDITIONAL = "conditional"
+    CONTINGENT = "contingent"
     FINANCED = "financed"
     THIRD_PARTY = "third_party"
+
+
+class GSTClassification(str, Enum):
+    GST_AMOUNT_CONFIRMED = "GST_AMOUNT_CONFIRMED"
+    GST_RATE_CONFIRMED = "GST_RATE_CONFIRMED"
+    GST_INCLUDED = "GST_INCLUDED"
+    GST_POTENTIALLY_APPLICABLE = "GST_POTENTIALLY_APPLICABLE"
+    GST_UNKNOWN = "GST_UNKNOWN"
+    GST_NOT_APPLICABLE = "GST_NOT_APPLICABLE"
+
+
+class ThirdPartyRecoveryMethod(str, Enum):
+    PAID_DIRECTLY_BY_BORROWER = "PAID_DIRECTLY_BY_BORROWER"
+    COLLECTED_BY_LENDER = "COLLECTED_BY_LENDER"
+    RECOVERED_AGAINST_AGENCY_INVOICE = "RECOVERED_AGAINST_AGENCY_INVOICE"
+    RECOVERY_METHOD_UNKNOWN = "RECOVERY_METHOD_UNKNOWN"
 
 
 class CrossValidationStatus(str, Enum):
@@ -51,18 +68,50 @@ class CrossValidationStatus(str, Enum):
 class ExtractedFieldInfo(BaseModel):
     status: FieldStatus = FieldStatus.NOT_FOUND
     source_page: Optional[int] = None
+    source_section: Optional[str] = None
     evidence_snippet: Optional[str] = None
+    raw_text: Optional[str] = None
+    extraction_confidence: str = "HIGH"
     note: Optional[str] = None
 
 
 class ExtractedCharge(BaseModel):
     name: str
     amount: Optional[float] = Field(default=None, ge=0)
+    rate_pct: Optional[float] = Field(default=None, ge=0)
+    rate_basis: Optional[str] = None
+    currency: str = "INR"
     category: ChargeCategory
+    trigger_condition: Optional[str] = None
+    frequency: Optional[str] = None
+    payment_timing: Optional[str] = None
+    caused_by_borrower_action: bool = False
+    mandatory_status: str = "MANDATORY"
+    is_mandatory: bool = True
+    is_capitalized: bool = False
+    gst_classification: GSTClassification = GSTClassification.GST_UNKNOWN
+    gst_related_service: Optional[str] = None
+    third_party_recovery_method: Optional[ThirdPartyRecoveryMethod] = None
     status: FieldStatus = FieldStatus.CONFIRMED
     source_page: Optional[int] = None
+    source_section: Optional[str] = None
     evidence_snippet: Optional[str] = None
+    raw_text: Optional[str] = None
+    extraction_confidence: str = "HIGH"
+    dedup_id: Optional[str] = None
+    repeated_on_pages: List[int] = Field(default_factory=list)
     tax_note: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class DocumentNote(BaseModel):
+    topic: str
+    summary: str
+    source_page: int
+    source_section: Optional[str] = None
+    evidence_snippet: str
+    raw_text: Optional[str] = None
+    extraction_confidence: str = "HIGH"
 
 
 class CrossValidationResult(BaseModel):
@@ -144,7 +193,11 @@ class ExtractedLoanTerms(BaseModel):
     # Multi-page granular charge & schedule tracking
     charges: List[ExtractedCharge] = Field(
         default_factory=list,
-        description="All extracted charges separated by confirmed_upfront, conditional, financed, third_party",
+        description="All extracted charges separated by confirmed_upfront, conditional, contingent, financed, third_party",
+    )
+    document_notes: List[DocumentNote] = Field(
+        default_factory=list,
+        description="Supporting annexure, tax, and servicing notes with source pages and snippets",
     )
     schedule_instalment_count: Optional[int] = Field(
         default=None, ge=0, description="Number of instalments found in repayment schedule if present"
@@ -264,7 +317,11 @@ class DiscrepancyItem(BaseModel):
     description: str
     impact_amount: Optional[float] = None
     source_page: Optional[int] = None
+    source_pages: List[int] = Field(default_factory=list)
+    source_section: Optional[str] = None
     evidence_snippet: Optional[str] = None
+    raw_text: Optional[str] = None
+    extraction_confidence: str = "HIGH"
 
 
 class LoanAuditReport(BaseModel):
@@ -289,12 +346,20 @@ class LoanAuditReport(BaseModel):
     known_upfront_recoveries_excl_tax: Optional[float] = None
     fee_gst_amount: Optional[float] = None
     stated_gst_rate_pct: Optional[float] = None
+    gst_classification: GSTClassification = GSTClassification.GST_UNKNOWN
     gst_status_note: Optional[str] = None
     total_upfront_fees_incl_gst: Optional[float] = None
     bundled_insurance_amount: Optional[float] = None
     is_insurance_capitalized: bool = False
     conditional_charges_total: Optional[float] = None
+    contingent_charges_total: Optional[float] = None
     third_party_charges_total: Optional[float] = None
+    penal_charge_rate_pct: Optional[float] = None
+    penal_charges_capitalized: Optional[bool] = None
+    conditional_charges: List[ExtractedCharge] = Field(
+        default_factory=list,
+        description="Individual conditional/contingent charges kept separate and never summed as expected expenses",
+    )
 
     # Cash flows and true cost (None / UNKNOWN if inputs are missing)
     gross_loan_amount: Optional[float] = None
@@ -325,6 +390,7 @@ class LoanAuditReport(BaseModel):
     missing_fields: List[str] = Field(default_factory=list)
     field_statuses: Dict[str, ExtractedFieldInfo] = Field(default_factory=dict)
     charges_breakdown: List[ExtractedCharge] = Field(default_factory=list)
+    document_notes: List[DocumentNote] = Field(default_factory=list)
     cross_validations: List[CrossValidationResult] = Field(default_factory=list)
 
     # Negotiation gating

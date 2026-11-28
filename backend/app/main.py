@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import logging
 import asyncio
 from typing import Optional, List
 
@@ -12,10 +13,12 @@ for p in [current_dir, backend_dir, root_dir]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, status, Depends
+from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.config import settings
 from app.schemas.loan import (
@@ -49,6 +52,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    return response
 
 def mask_pii(text: str) -> str:
     """Masks sensitive borrower PII (PAN, phone, bank account, email) before persistence."""
@@ -96,7 +109,7 @@ def serve_dashboard():
     index_file = os.path.join(FRONTEND_DIR, "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
-    return {"message": "LoanLens API is running. UI file index.html not found.", "checked_dir": FRONTEND_DIR}
+    return {"message": "LoanLens API is running. Frontend UI unavailable."}
 
 
 @app.api_route("/sample_sanction_letter.pdf", methods=["GET", "HEAD"], response_class=FileResponse)
@@ -169,6 +182,11 @@ async def audit_loan_document(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail="Uploaded PDF file size exceeds the 25 MB limit.",
             )
+        if not pdf_bytes.lstrip().startswith(b"%PDF"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded file is not a valid PDF binary.",
+            )
 
         pages = DocumentExtractor.extract_pages_from_pdf_bytes(pdf_bytes, active_mistral_key)
         raw_text = "\n\n".join(
@@ -185,10 +203,11 @@ async def audit_loan_document(
             )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Error occurred while processing uploaded PDF")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error occurred while processing PDF text: {str(e)}",
+            detail="Error occurred while processing the uploaded PDF document.",
         )
 
     # 2. Flagship Zero-Hallucination Structured Extraction (STRICT: Zero math, Zero False Zeros)
@@ -196,10 +215,11 @@ async def audit_loan_document(
         extracted_terms = await llm_service.extract_loan_parameters(
             raw_text, custom_api_key=active_openrouter_key, model_name=model_name, pages=pages
         )
-    except Exception as e:
+    except Exception:
+        logger.exception("Extraction pipeline failed")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Extraction model error: {str(e)}",
+            detail="Extraction engine failed to process the document.",
         )
 
     # 3. Pure Deterministic Financial Audit (Python Math Engine)
@@ -220,16 +240,17 @@ async def audit_loan_document(
             model_name=model_name,
         )
         audit_result.explanation = explanation
-    except Exception as e:
-        audit_result.explanation = (
-            f"Audit completed successfully, but narrative explanation could not be generated: {str(e)}"
-        )
+    except Exception:
+        logger.exception("Explanation generation failed; using deterministic template fallback")
+        audit_result.explanation = llm_service._local_template_explanation(audit_result, language)
 
     # 5. Persist sanitized audit to Database (PII masked)
     try:
         sanitized_dump = audit_result.model_dump()
         if sanitized_dump.get("raw_extracted_text_preview"):
             sanitized_dump["raw_extracted_text_preview"] = sanitized_preview
+        sanitized_explanation = mask_pii(audit_result.explanation) if audit_result.explanation else None
+        sanitized_dump["explanation"] = sanitized_explanation
 
         record = LoanAuditModel(
             lender_name=audit_result.lender_name,
@@ -241,7 +262,7 @@ async def audit_loan_document(
             total_cost_of_borrowing=audit_result.total_cost_of_borrowing,
             rbi_compliance_score=audit_result.rbi_compliance_score,
             audit_data=sanitized_dump,
-            explanation=audit_result.explanation,
+            explanation=sanitized_explanation,
         )
         db.add(record)
         db.commit()
@@ -273,8 +294,9 @@ async def audit_manual_loan(
             model_name=model_name,
         )
         audit_result.explanation = explanation
-    except Exception as e:
-        audit_result.explanation = f"Explanation generation fallback: {str(e)}"
+    except Exception:
+        logger.exception("Manual audit explanation generation failed; using deterministic template fallback")
+        audit_result.explanation = llm_service._local_template_explanation(audit_result, language)
     return audit_result
 
 

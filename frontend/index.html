@@ -168,7 +168,7 @@
   <div id="api-key-warning" class="hidden bg-amber-50 border-b border-amber-200 py-2.5 px-4 text-center">
     <div class="max-w-7xl mx-auto flex items-center justify-center space-x-2 text-xs text-amber-900">
       <i data-lucide="info" class="w-4 h-4 text-amber-600"></i>
-      <span><strong>Offline Heuristic Parser:</strong> Running local parser. For AI extraction with Claude 3.5 Sonnet and Mistral OCR, <a href="javascript:toggleKeyModal()" class="underline font-bold text-amber-950 hover:text-slate-900">configure your API keys</a>.</span>
+      <span><strong>Offline Heuristic Parser:</strong> Running local parser. For AI extraction with Claude 3.5 Sonnet and Mistral OCR, <button type="button" onclick="toggleKeyModal()" class="underline font-bold text-amber-950 hover:text-slate-900 cursor-pointer">configure your API keys</button>.</span>
     </div>
   </div>
 
@@ -433,6 +433,22 @@
             <div class="mt-2 text-xs font-semibold text-slate-300 pt-2 border-t border-slate-800" id="metric-score-label">Cross-validation complete</div>
           </div>
 
+        </div>
+
+        <!-- Individual Charge Reconciliation & Provenance -->
+        <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h3 class="text-base font-bold text-slate-900 flex items-center space-x-2">
+              <span class="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                <i data-lucide="list-checks" class="w-4 h-4"></i>
+              </span>
+              <span>Individual Charge Reconciliation &amp; Provenance</span>
+            </h3>
+            <span id="charges-count" class="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-mono">0 Items</span>
+          </div>
+          <div id="charges-reconciliation-list" class="space-y-2.5">
+            <!-- Charges populated dynamically -->
+          </div>
         </div>
 
         <!-- Discrepancies & Flagged Regulatory Findings -->
@@ -818,6 +834,35 @@
     let fullExtractedText = "";
     let lastAuditData = null;
 
+    // Escape untrusted document/API strings before injecting into DOM
+    function escapeHtml(val) {
+      if (val === null || val === undefined) return '';
+      return String(val)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Strip active scripts/event handlers from rendered Markdown HTML
+    function sanitizeMarkdownHtml(html) {
+      const tpl = document.createElement('template');
+      tpl.innerHTML = html || '';
+      const blockedTags = tpl.content.querySelectorAll('script, iframe, object, embed, form, input, meta, base, link');
+      blockedTags.forEach(el => el.remove());
+      tpl.content.querySelectorAll('*').forEach(el => {
+        for (const attr of Array.from(el.attributes)) {
+          const name = attr.name.toLowerCase();
+          const val = (attr.value || '').trim().toLowerCase();
+          if (name.startsWith('on') || ((name === 'href' || name === 'src' || name === 'action') && (val.startsWith('javascript:') || val.startsWith('data:')))) {
+            el.removeAttribute(attr.name);
+          }
+        }
+      });
+      return tpl.innerHTML;
+    }
+
     // Toast feedback notification
     function showToast(message, isError = false) {
       const container = document.getElementById('toast-container');
@@ -825,7 +870,7 @@
       toast.className = `px-4 py-3 rounded-2xl text-xs font-bold shadow-xl transition-all duration-300 transform translate-y-2 pointer-events-auto border flex items-center space-x-2 ${
         isError ? 'bg-rose-50 border-rose-300 text-rose-800' : 'bg-slate-900 border-slate-800 text-white'
       }`;
-      toast.innerHTML = `<i data-lucide="${isError ? 'alert-triangle' : 'check-circle'}" class="w-4 h-4 ${isError ? 'text-rose-600' : 'text-emerald-400'}"></i><span>${message}</span>`;
+      toast.innerHTML = `<i data-lucide="${isError ? 'alert-triangle' : 'check-circle'}" class="w-4 h-4 ${isError ? 'text-rose-600' : 'text-emerald-400'}"></i><span>${escapeHtml(message)}</span>`;
       container.appendChild(toast);
       lucide.createIcons();
       setTimeout(() => {
@@ -994,7 +1039,7 @@
       }
       selectedPdfFile = file;
       const nameEl = document.getElementById('selected-file-name');
-      nameEl.innerHTML = `<i data-lucide="file-check-2" class="w-4 h-4 text-emerald-600"></i><span>Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)</span>`;
+      nameEl.innerHTML = `<i data-lucide="file-check-2" class="w-4 h-4 text-emerald-600"></i><span>Selected: ${escapeHtml(file.name)} (${(file.size / 1024).toFixed(1)} KB)</span>`;
       nameEl.classList.remove('hidden');
       
       const btn = document.getElementById('btn-run-audit');
@@ -1141,10 +1186,14 @@
       };
 
       try {
-        const apiKeyParam = getStoredApiKey() ? `&openrouter_api_key=${encodeURIComponent(getStoredApiKey())}` : '';
-        const res = await fetch(`/api/v1/audit/manual?language=${currentLanguage}${apiKeyParam}`, {
+        const headers = { 'Content-Type': 'application/json' };
+        const apiKey = getStoredApiKey();
+        if (apiKey) {
+          headers['X-OpenRouter-Key'] = apiKey;
+        }
+        const res = await fetch(`/api/v1/audit/manual?language=${encodeURIComponent(currentLanguage)}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify(payload)
         });
         const data = await parseJsonResponse(res);
@@ -1173,13 +1222,11 @@
       const apiKey = getStoredApiKey();
       if (apiKey) {
         requestHeaders['X-OpenRouter-Key'] = apiKey;
-        formData.append('openrouter_api_key', apiKey);
       }
 
       const mistralKey = getStoredMistralKey();
       if (mistralKey) {
         requestHeaders['X-Mistral-Key'] = mistralKey;
-        formData.append('mistral_api_key', mistralKey);
       }
 
       const modelSelect = document.getElementById('select-ai-model');
@@ -1272,7 +1319,7 @@
       if (isAi) {
         let modelClean = data.extraction_method.replace('ai_model (', '').replace(')', '').trim();
         if (modelClean.includes('/')) modelClean = modelClean.split('/')[1];
-        extractionBadge.innerHTML = `<span class="text-emerald-700 font-bold">● AI Verified (${modelClean} • ${ocrLabel} • ${pageCount} Pages)</span>`;
+        extractionBadge.innerHTML = `<span class="text-emerald-700 font-bold">● AI Verified (${escapeHtml(modelClean)} • ${escapeHtml(ocrLabel)} • ${pageCount} Pages)</span>`;
       } else {
         extractionBadge.innerHTML = `<span class="text-emerald-700 font-bold">● Multi-Page Forensic Audit (${pageCount} Pages Verified)</span>`;
       }
@@ -1310,7 +1357,8 @@
       } else {
         document.getElementById('metric-fees-gst').innerText = "UNKNOWN";
       }
-      document.getElementById('metric-gst-only').innerText = fmtInr(data.fee_gst_amount);
+      const gstClassLabel = data.gst_classification ? ` (${data.gst_classification.replace(/^GST_/, '').replace(/_/g, ' ')})` : '';
+      document.getElementById('metric-gst-only').innerText = `${fmtInr(data.fee_gst_amount)}${gstClassLabel}`;
       if (data.bundled_insurance_amount !== null && data.bundled_insurance_amount !== undefined) {
         document.getElementById('metric-insurance').innerText = `${fmtInr(data.bundled_insurance_amount)}${data.is_insurance_capitalized ? ' (Financed)' : ''}`;
       } else {
@@ -1346,6 +1394,67 @@
         }
       }
 
+      // Individual Charge Reconciliation list
+      const chargesList = document.getElementById('charges-reconciliation-list');
+      const chargesCount = document.getElementById('charges-count');
+      if (chargesList && chargesCount) {
+        const charges = data.charges_breakdown || [];
+        chargesList.innerHTML = '';
+        chargesCount.innerText = `${charges.length} Items`;
+        if (charges.length === 0) {
+          chargesList.innerHTML = `<div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">No itemized charges extracted from document.</div>`;
+        } else {
+          charges.forEach(c => {
+            const amtLabel = (c.amount !== null && c.amount !== undefined)
+              ? `₹${Number(c.amount).toLocaleString('en-IN')} ${c.currency || 'INR'}`
+              : (c.rate_pct !== null && c.rate_pct !== undefined ? `${c.rate_pct.toFixed(2)}% p.a.` : 'Unquantified');
+            const repText = (c.repeated_on_pages && c.repeated_on_pages.length > 0)
+              ? ` | Also on p.${c.repeated_on_pages.join(', p.')}` : '';
+            const gstBadge = c.gst_classification
+              ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono">${escapeHtml(c.gst_classification)}${c.gst_related_service ? `: ${escapeHtml(c.gst_related_service)}` : ''}</span>`
+              : (c.tax_note ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-mono">${escapeHtml(c.tax_note)}</span>` : '');
+            const tpBadge = c.third_party_recovery_method
+              ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 font-mono">${escapeHtml(c.third_party_recovery_method)}</span>`
+              : '';
+            const secBadge = c.source_section
+              ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">${escapeHtml(c.source_section)}</span>`
+              : '';
+            const confBadge = c.extraction_confidence
+              ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">${escapeHtml(c.extraction_confidence)}</span>`
+              : '';
+            const condMeta = (c.trigger_condition || c.frequency)
+              ? `<div class="text-[11px] text-slate-600 mt-1">Trigger: ${escapeHtml(c.trigger_condition || 'Conditional')} • Frequency: <code class="text-[10px]">${escapeHtml(c.frequency || 'CONDITIONAL')}</code> • Borrower Action: <code class="text-[10px]">${c.caused_by_borrower_action ? 'YES' : 'NO'}</code></div>`
+              : '';
+            const noteText = c.notes ? `<div class="text-[11px] text-slate-600 mt-1">${escapeHtml(c.notes)}</div>` : '';
+            const evText = c.evidence_snippet ? `<div class="text-[11px] font-mono text-slate-500 bg-slate-50 border border-slate-200 rounded px-2 py-1 mt-1.5">Evidence: ${escapeHtml(c.evidence_snippet)}</div>` : '';
+            const rawText = (c.raw_text && c.raw_text !== c.evidence_snippet) ? `<div class="text-[10px] font-mono text-slate-400 px-2 mt-0.5">Raw: ${escapeHtml(c.raw_text)}</div>` : '';
+            const row = document.createElement('div');
+            row.className = "p-3.5 rounded-2xl border border-slate-200 bg-white space-y-1";
+            row.innerHTML = `
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="text-xs font-bold text-slate-900">${escapeHtml(c.name)}</span>
+                  <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">${escapeHtml(c.category)}</span>
+                  <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">${escapeHtml(c.mandatory_status)}</span>
+                  ${c.source_page ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">Page ${escapeHtml(c.source_page)}${escapeHtml(repText)}</span>` : ''}
+                  ${secBadge}
+                  ${gstBadge}
+                  ${tpBadge}
+                  ${confBadge}
+                </div>
+                <span class="text-xs font-extrabold text-slate-900 font-mono">${escapeHtml(amtLabel)}</span>
+              </div>
+              <div class="text-[11px] text-slate-500">Timing: ${escapeHtml(c.payment_timing || 'Unspecified')} • Dedup ID: <code class="text-[10px]">${escapeHtml(c.dedup_id || 'n/a')}</code></div>
+              ${condMeta}
+              ${noteText}
+              ${evText}
+              ${rawText}
+            `;
+            chargesList.appendChild(row);
+          });
+        }
+      }
+
       // Discrepancy list (with source_page & evidence_snippet provenance)
       const discList = document.getElementById('discrepancy-list');
       discList.innerHTML = '';
@@ -1369,29 +1478,36 @@
             badgeStyle = "bg-amber-500 text-slate-950 border-amber-500 font-bold";
           }
 
-          const pageBadge = d.source_page ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">Page ${d.source_page}</span>` : '';
-          const evBlock = d.evidence_snippet ? `<div class="mt-2 text-[11px] font-mono text-slate-600 bg-white/70 border border-slate-200 rounded-lg px-2.5 py-1.5">Evidence: ${d.evidence_snippet}</div>` : '';
+          const pagesList = (d.source_pages && d.source_pages.length > 0) ? d.source_pages : (d.source_page ? [d.source_page] : []);
+          const pageBadge = pagesList.length > 0 ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">Page${pagesList.length > 1 ? 's' : ''} ${escapeHtml(pagesList.join(', '))}</span>` : '';
+          const secBadge = d.source_section ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">${escapeHtml(d.source_section)}</span>` : '';
+          const confBadge = d.extraction_confidence ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">${escapeHtml(d.extraction_confidence)}</span>` : '';
+          const evBlock = d.evidence_snippet ? `<div class="mt-2 text-[11px] font-mono text-slate-600 bg-white/70 border border-slate-200 rounded-lg px-2.5 py-1.5">Evidence: ${escapeHtml(d.evidence_snippet)}</div>` : '';
+          const rawBlock = (d.raw_text && d.raw_text !== d.evidence_snippet) ? `<div class="mt-1 text-[10px] font-mono text-slate-400">Raw: ${escapeHtml(d.raw_text)}</div>` : '';
 
           const div = document.createElement('div');
           div.className = `p-4 rounded-2xl border ${cardStyle} transition-all shadow-xs`;
           div.innerHTML = `
-            <div class="flex items-center justify-between mb-1.5">
-              <h4 class="text-xs font-bold text-slate-900 flex items-center space-x-2">
-                <span>${d.title}</span>
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+              <h4 class="text-xs font-bold text-slate-900 flex flex-wrap items-center gap-1.5">
+                <span>${escapeHtml(d.title)}</span>
                 ${pageBadge}
+                ${secBadge}
+                ${confBadge}
               </h4>
-              <span class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${badgeStyle}">${d.severity}</span>
+              <span class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${badgeStyle}">${escapeHtml(d.severity)}</span>
             </div>
-            <p class="text-xs text-slate-700 leading-relaxed">${d.description}</p>
+            <p class="text-xs text-slate-700 leading-relaxed">${escapeHtml(d.description)}</p>
             ${evBlock}
+            ${rawBlock}
           `;
           discList.appendChild(div);
         });
       }
 
-      // Explanation markdown
+      // Explanation markdown (sanitized to prevent DOM XSS)
       const expContainer = document.getElementById('explanation-content');
-      expContainer.innerHTML = marked.parse(data.explanation || 'No explanation generated.');
+      expContainer.innerHTML = sanitizeMarkdownHtml(marked.parse(data.explanation || 'No explanation generated.'));
 
       lucide.createIcons();
     }
@@ -1537,18 +1653,22 @@
           let cardBg = isWinner ? 'bg-emerald-50 border-2 border-emerald-500 shadow-sm' : 'bg-white border border-slate-200';
           let badgeBg = isWinner ? 'bg-emerald-600 text-white font-bold' : 'bg-slate-200 text-slate-700';
 
+          const aprStr = (loan.effective_annual_apr !== null && loan.effective_annual_apr !== undefined) ? `${loan.effective_annual_apr.toFixed(2)}%` : 'UNKNOWN';
+          const netStr = (loan.net_disbursed_amount !== null && loan.net_disbursed_amount !== undefined) ? `₹${loan.net_disbursed_amount.toLocaleString('en-IN')}` : 'UNKNOWN';
+          const costStr = (loan.total_cost_of_borrowing !== null && loan.total_cost_of_borrowing !== undefined) ? `₹${loan.total_cost_of_borrowing.toLocaleString('en-IN')}` : 'UNKNOWN';
+
           card.className = `p-5 rounded-2xl ${cardBg} shadow-xs`;
           card.innerHTML = `
             <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-bold text-slate-900">${loan.identifier} (${loan.lender_name})</span>
-              <span class="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${badgeBg}">Rank #${loan.rank}</span>
+              <span class="text-xs font-bold text-slate-900">${escapeHtml(loan.identifier)} (${escapeHtml(loan.lender_name)})</span>
+              <span class="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${badgeBg}">Rank #${escapeHtml(loan.rank)}</span>
             </div>
             <div class="space-y-2 text-xs text-slate-700">
-              <div class="flex justify-between"><span>True Effective APR:</span> <strong class="text-rose-600 font-mono">${loan.effective_annual_apr.toFixed(2)}%</strong></div>
-              <div class="flex justify-between"><span>Net Disbursed:</span> <strong class="text-slate-900 font-mono">₹${loan.net_disbursed_amount.toLocaleString('en-IN')}</strong></div>
-              <div class="flex justify-between"><span>Total Cost of Borrowing:</span> <strong class="${isWinner ? 'text-emerald-700 font-bold' : 'text-rose-600 font-black'} font-mono">₹${loan.total_cost_of_borrowing.toLocaleString('en-IN')}</strong></div>
+              <div class="flex justify-between"><span>True Effective APR:</span> <strong class="text-rose-600 font-mono">${escapeHtml(aprStr)}</strong></div>
+              <div class="flex justify-between"><span>Net Disbursed:</span> <strong class="text-slate-900 font-mono">${escapeHtml(netStr)}</strong></div>
+              <div class="flex justify-between"><span>Total Cost of Borrowing:</span> <strong class="${isWinner ? 'text-emerald-700 font-bold' : 'text-rose-600 font-black'} font-mono">${escapeHtml(costStr)}</strong></div>
             </div>
-            <div class="mt-3 pt-2.5 border-t border-slate-200 text-[11px] text-slate-600 leading-normal font-medium">${loan.key_takeaway}</div>
+            <div class="mt-3 pt-2.5 border-t border-slate-200 text-[11px] text-slate-600 leading-normal font-medium">${escapeHtml(loan.key_takeaway)}</div>
           `;
           container.appendChild(card);
         });

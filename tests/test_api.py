@@ -102,3 +102,55 @@ def test_schema_interest_type_normalization():
         interest_type="unspecified",
     )
     assert terms_unknown.interest_type == InterestRateType.UNKNOWN
+
+
+def _run_coro_sync(coro):
+    """Drives non-blocking coroutines synchronously without creating OS event-loop sockets."""
+    try:
+        coro.send(None)
+    except StopIteration as stop:
+        return stop.value
+    finally:
+        coro.close()
+    raise RuntimeError("Coroutine yielded unexpectedly")
+
+
+def test_security_headers_and_pdf_magic_bytes():
+    """Verify security response headers and rejection of disguised non-PDF uploads."""
+    from fastapi import HTTPException
+    from app.main import add_security_headers, audit_loan_document
+
+    async def _fake_call_next(_request):
+        from starlette.responses import Response
+        return Response("ok")
+
+    resp = _run_coro_sync(add_security_headers(None, _fake_call_next))
+    assert resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert resp.headers["X-Frame-Options"] == "DENY"
+    assert resp.headers["Referrer-Policy"] == "no-referrer"
+
+    class _FakeUploadFile:
+        def __init__(self, filename: str, data: bytes):
+            self.filename = filename
+            self._data = data
+
+        async def read(self) -> bytes:
+            return self._data
+
+    fake_pdf = _FakeUploadFile(filename="malicious.pdf", data=b"<script>alert(1)</script>")
+    with pytest.raises(HTTPException) as exc_info:
+        _run_coro_sync(audit_loan_document(file=fake_pdf))
+    assert exc_info.value.status_code == 400
+    assert "valid PDF" in exc_info.value.detail
+
+
+def test_frontend_no_query_api_key_or_unescaped_markdown():
+    """Verify frontend sends API keys via headers (not URL query string) and sanitizes HTML output."""
+    index_path = os.path.join(PROJECT_ROOT, "frontend", "index.html")
+    with open(index_path, "r", encoding="utf-8") as f:
+        html = f.read()
+    assert "?language=${currentLanguage}${apiKeyParam}" not in html
+    assert "openrouter_api_key=" not in html
+    assert "function escapeHtml(" in html
+    assert "function sanitizeMarkdownHtml(" in html
+    assert "sanitizeMarkdownHtml(marked.parse(" in html

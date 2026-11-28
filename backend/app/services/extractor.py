@@ -119,10 +119,17 @@ class DocumentExtractor:
                 page_sections: List[str] = []
                 extracted_tables: List[List[List[str]]] = []
 
-                # 1. Extract structured vector tables
+                # 1. Extract geometrically sorted text first (captures tables, paragraphs, footnotes, annexures
+                #    without PyMuPDF find_tables() span/decimal reordering like "1860000 . , .")
+                sorted_text = page.get_text("text", sort=True).strip()
+                if sorted_text:
+                    page_sections.append(f"--- Page {page_idx + 1} Document Text ---\n{sorted_text}")
+
+                # 2. Extract structured vector tables as metadata; only append to text stream if sorted_text is empty
                 try:
                     tabs = page.find_tables()
                     if tabs.tables:
+                        table_texts = []
                         for t_idx, tab in enumerate(tabs.tables):
                             rows = tab.extract()
                             if rows:
@@ -135,14 +142,11 @@ class DocumentExtractor:
                                         table_lines.append(" | ".join(clean_row))
                                 if clean_rows:
                                     extracted_tables.append(clean_rows)
-                                    page_sections.append("\n".join(table_lines))
+                                    table_texts.append("\n".join(table_lines))
+                        if not sorted_text and table_texts:
+                            page_sections.extend(table_texts)
                 except Exception as e:
                     logger.debug(f"Table extraction note on page {page_idx + 1}: {e}")
-
-                # 2. Extract geometrically sorted text (captures paragraphs, headers, footers, footnotes, annexures)
-                sorted_text = page.get_text("text", sort=True).strip()
-                if sorted_text:
-                    page_sections.append(f"--- Page {page_idx + 1} Document Text ---\n{sorted_text}")
 
                 # 3. Extract any PDF annotations / sticky notes
                 try:
@@ -165,6 +169,7 @@ class DocumentExtractor:
                     {
                         "page": page_idx + 1,
                         "text": cleaned_page_text,
+                        "raw_text": raw_page_text,
                         "tables": extracted_tables,
                         "engine": "pymupdf",
                     }

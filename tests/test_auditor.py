@@ -11,7 +11,11 @@ if BACKEND_DIR not in sys.path:
 
 from app.schemas.loan import (
     ExtractedLoanTerms,
+    ExtractedCharge,
     FieldStatus,
+    ChargeCategory,
+    GSTClassification,
+    ThirdPartyRecoveryMethod,
     CrossValidationStatus,
     InterestRateType,
     LoanCategory,
@@ -271,3 +275,68 @@ def test_compare_loans():
     audit_a, audit_b, winner_idx = DeterministicLoanAuditor.compare_loans(loan_cheaper, loan_costlier)
     assert winner_idx == 1
     assert audit_a.total_cost_of_borrowing < audit_b.total_cost_of_borrowing
+
+
+def test_direct_borrower_third_party_fee_not_subtracted_from_disbursement():
+    """
+    Direct third-party fees paid by the borrower (PAID_DIRECTLY_BY_BORROWER)
+    must NOT be subtracted from lender net disbursement, and conditional
+    charges must NEVER be summed into a single combined total.
+    """
+    loan = ExtractedLoanTerms(
+        lender_name="Test Bank",
+        principal_amount=1000000.0,
+        stated_interest_rate=9.5,
+        interest_type=InterestRateType.FLOATING,
+        tenure_months=120,
+        stated_gst_rate_pct=18.0,
+        charges=[
+            ExtractedCharge(
+                name="Processing Fee",
+                amount=10000.0,
+                category=ChargeCategory.CONFIRMED_UPFRONT,
+                gst_classification=GSTClassification.GST_RATE_CONFIRMED,
+                gst_related_service="Processing Fee",
+                source_page=1,
+                source_section="Section 2 - Fees",
+                evidence_snippet="Processing Fee: INR 10,000 + 18% GST.",
+                raw_text="Processing Fee: Rs. 10,000 + 18% GST.",
+            ),
+            ExtractedCharge(
+                name="Stamp Duty Payable Directly",
+                amount=15000.0,
+                category=ChargeCategory.THIRD_PARTY,
+                third_party_recovery_method=ThirdPartyRecoveryMethod.PAID_DIRECTLY_BY_BORROWER,
+                source_page=2,
+                source_section="Section 3 - Statutory Costs",
+                evidence_snippet="Stamp duty of INR 15,000 is paid directly by the borrower to the registrar.",
+                raw_text="Stamp duty of Rs. 15,000 is paid directly by the borrower to the registrar.",
+            ),
+            ExtractedCharge(
+                name="Assisted Mandate Fee",
+                amount=590.0,
+                category=ChargeCategory.CONDITIONAL,
+                trigger_condition="Only if assisted channel chosen",
+                frequency="ONE_TIME",
+                caused_by_borrower_action=True,
+                source_page=2,
+            ),
+            ExtractedCharge(
+                name="Overdue Servicing Fee",
+                amount=450.0,
+                category=ChargeCategory.CONDITIONAL,
+                trigger_condition="Per overdue event",
+                frequency="PER_OVERDUE_EVENT",
+                caused_by_borrower_action=True,
+                source_page=2,
+            ),
+        ],
+    )
+    report = DeterministicLoanAuditor.audit_loan(loan)
+    assert report.known_upfront_recoveries_excl_tax == 10000.0
+    assert report.fee_gst_amount == 1800.0
+    assert report.net_disbursed_amount == 1000000.0 - 11800.0
+    assert report.third_party_charges_total == 15000.0
+    assert report.conditional_charges_total is None
+    assert len(report.conditional_charges) == 2
+    assert report.gst_classification == GSTClassification.GST_RATE_CONFIRMED

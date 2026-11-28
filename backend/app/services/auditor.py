@@ -8,6 +8,8 @@ from app.schemas.loan import (
     CrossValidationStatus,
     FieldStatus,
     ChargeCategory,
+    GSTClassification,
+    ThirdPartyRecoveryMethod,
     LoanAuditReport,
     DiscrepancyItem,
     DiscrepancySeverity,
@@ -340,10 +342,19 @@ class DeterministicLoanAuditor:
         stated_emi = loan.stated_emi
 
         # 1. Separate charges strictly by category
-        upfront_items = [c for c in charges if c.category == ChargeCategory.CONFIRMED_UPFRONT and c.amount is not None]
+        # Direct borrower payments (PAID_DIRECTLY_BY_BORROWER) are NEVER deducted from lender disbursement.
+        upfront_items = [
+            c for c in charges
+            if c.category == ChargeCategory.CONFIRMED_UPFRONT
+            and c.amount is not None
+            and c.third_party_recovery_method != ThirdPartyRecoveryMethod.PAID_DIRECTLY_BY_BORROWER
+        ]
         financed_items = [c for c in charges if c.category == ChargeCategory.FINANCED and c.amount is not None]
-        conditional_items = [c for c in charges if c.category == ChargeCategory.CONDITIONAL and c.amount is not None]
-        third_party_items = [c for c in charges if c.category == ChargeCategory.THIRD_PARTY and c.amount is not None]
+        conditional_items = [c for c in charges if c.category == ChargeCategory.CONDITIONAL]
+        contingent_items = [c for c in charges if c.category == ChargeCategory.CONTINGENT]
+        third_party_items = [c for c in charges if c.category == ChargeCategory.THIRD_PARTY]
+        third_party_quantified = [c for c in third_party_items if c.amount is not None]
+        third_party_unquantified = [c for c in third_party_items if c.amount is None]
 
         # Separate non-insurance upfront cash recoveries vs upfront insurance
         upfront_non_ins = [c for c in upfront_items if "insurance" not in c.name.lower()]
@@ -354,10 +365,10 @@ class DeterministicLoanAuditor:
         other_rec: Optional[float] = None
         for c in upfront_non_ins:
             lname = c.name.lower()
-            if "processing" in lname:
-                raw_pf = round((raw_pf or 0.0) + c.amount, 2)
-            elif any(k in lname for k in ("doc", "stamp", "legal", "cersai", "title")):
+            if any(k in lname for k in ("doc", "custody", "instrument", "stamp", "legal", "cersai", "title", "registry")):
                 raw_doc = round((raw_doc or 0.0) + c.amount, 2)
+            elif "processing" in lname or "file handling" in lname:
+                raw_pf = round((raw_pf or 0.0) + c.amount, 2)
             else:
                 other_rec = round((other_rec or 0.0) + c.amount, 2)
 
@@ -381,8 +392,16 @@ class DeterministicLoanAuditor:
         )
 
         financed_total: Optional[float] = round(sum(c.amount for c in financed_items), 2) if financed_items else None
-        conditional_total: Optional[float] = round(sum(c.amount for c in conditional_items), 2) if conditional_items else None
-        third_party_total: Optional[float] = round(sum(c.amount for c in third_party_items), 2) if third_party_items else None
+        # Never aggregate unrelated conditional charges into one misleading sum
+        conditional_total: Optional[float] = None
+        conditional_charges_list = conditional_items + contingent_items
+        contingent_quantified = [c for c in contingent_items if c.amount is not None]
+        contingent_total: Optional[float] = round(sum(c.amount for c in contingent_quantified), 2) if contingent_quantified else None
+        third_party_total: Optional[float] = round(sum(c.amount for c in third_party_quantified), 2) if third_party_quantified else None
+
+        penal_items = [c for c in contingent_items if "penal" in c.name.lower()]
+        penal_rate_pct: Optional[float] = penal_items[0].rate_pct if penal_items else None
+        penal_capitalized: Optional[bool] = penal_items[0].is_capitalized if penal_items else None
 
         # Bundled insurance total and capitalization check
         bundled_ins: Optional[float] = loan.bundled_insurance
@@ -431,10 +450,18 @@ class DeterministicLoanAuditor:
                 known_upfront_recoveries_excl_tax=known_upfront_excl_tax,
                 fee_gst_amount=loan.stated_gst_amount,
                 stated_gst_rate_pct=loan.stated_gst_rate_pct,
+                gst_classification=(
+                    GSTClassification.GST_AMOUNT_CONFIRMED if loan.stated_gst_amount is not None
+                    else GSTClassification.GST_RATE_CONFIRMED if loan.stated_gst_rate_pct is not None
+                    else GSTClassification.GST_POTENTIALLY_APPLICABLE if loan.gst_status_note
+                    else GSTClassification.GST_UNKNOWN
+                ),
                 gst_status_note=loan.gst_status_note,
                 bundled_insurance_amount=bundled_ins,
                 is_insurance_capitalized=is_ins_cap,
-                conditional_charges_total=conditional_total,
+                conditional_charges_total=None,
+                conditional_charges=conditional_charges_list,
+                contingent_charges_total=contingent_total,
                 third_party_charges_total=third_party_total,
                 gross_loan_amount=opening_bal or principal,
                 net_disbursed_amount=loan.stated_net_disbursement,
@@ -452,10 +479,14 @@ class DeterministicLoanAuditor:
                 extraction_method=loan.extraction_method,
             )
 
-        # 3. GST Calculation (NEVER invent 18% or SAC 9971)
+        # 3. GST Calculation & Classification (NEVER invent 18% or SAC 9971)
         has_unquantified_tax_note = bool(
             loan.gst_status_note
-            or any(c.tax_note and "plus" in c.tax_note.lower() for c in upfront_non_ins)
+            or any(
+                c.gst_classification == GSTClassification.GST_POTENTIALLY_APPLICABLE
+                or (c.tax_note and "plus" in c.tax_note.lower())
+                for c in upfront_non_ins
+            )
         )
         fee_gst_amount: Optional[float] = None
         if loan.stated_gst_amount is not None:
@@ -463,13 +494,28 @@ class DeterministicLoanAuditor:
         elif loan.stated_gst_rate_pct is not None and known_upfront_excl_tax is not None:
             taxable_sum = sum(
                 c.amount for c in upfront_non_ins
-                if not (c.tax_note and "inclusive" in c.tax_note.lower())
+                if c.gst_classification != GSTClassification.GST_INCLUDED
+                and not (c.tax_note and "inclusive" in c.tax_note.lower())
             )
             if not upfront_non_ins:
                 taxable_sum = known_upfront_excl_tax
             fee_gst_amount = round(taxable_sum * (loan.stated_gst_rate_pct / 100.0), 2)
         elif known_upfront_excl_tax is not None and known_upfront_excl_tax == 0.0 and not has_unquantified_tax_note:
             fee_gst_amount = 0.0
+
+        charge_gst_classes = {c.gst_classification for c in upfront_non_ins + conditional_items}
+        if loan.stated_gst_amount is not None or GSTClassification.GST_AMOUNT_CONFIRMED in charge_gst_classes:
+            report_gst_classification = GSTClassification.GST_AMOUNT_CONFIRMED
+        elif loan.stated_gst_rate_pct is not None or GSTClassification.GST_RATE_CONFIRMED in charge_gst_classes:
+            report_gst_classification = GSTClassification.GST_RATE_CONFIRMED
+        elif has_unquantified_tax_note:
+            report_gst_classification = GSTClassification.GST_POTENTIALLY_APPLICABLE
+        elif upfront_non_ins and all(c.gst_classification == GSTClassification.GST_INCLUDED for c in upfront_non_ins):
+            report_gst_classification = GSTClassification.GST_INCLUDED
+        elif known_upfront_excl_tax == 0.0 or (upfront_non_ins and all(c.gst_classification == GSTClassification.GST_NOT_APPLICABLE for c in upfront_non_ins)):
+            report_gst_classification = GSTClassification.GST_NOT_APPLICABLE
+        else:
+            report_gst_classification = GSTClassification.GST_UNKNOWN
 
         # If fee_gst_amount is explicitly confirmed, update field status
         if fee_gst_amount is not None and field_statuses["gst_amount"].status == FieldStatus.NOT_FOUND:
@@ -896,6 +942,7 @@ class DeterministicLoanAuditor:
 
         # Capitalized / Financed insurance finding with provenance
         for c in financed_items:
+            pages_list = sorted({p for p in ([c.source_page] + (c.repeated_on_pages or [])) if p})
             discrepancies.append(
                 DiscrepancyItem(
                     code="CAPITALIZED_INSURANCE",
@@ -907,12 +954,17 @@ class DeterministicLoanAuditor:
                     ),
                     impact_amount=c.amount,
                     source_page=c.source_page,
+                    source_pages=pages_list,
+                    source_section=c.source_section,
                     evidence_snippet=c.evidence_snippet,
+                    raw_text=c.raw_text,
+                    extraction_confidence=c.extraction_confidence,
                 )
             )
 
         # Upfront insurance finding
         for c in upfront_ins:
+            pages_list = sorted({p for p in ([c.source_page] + (c.repeated_on_pages or [])) if p})
             discrepancies.append(
                 DiscrepancyItem(
                     code="BUNDLED_INSURANCE",
@@ -921,45 +973,125 @@ class DeterministicLoanAuditor:
                     description=f"₹{c.amount:,.2f} is deducted upfront from disbursement for insurance cover.",
                     impact_amount=c.amount,
                     source_page=c.source_page,
+                    source_pages=pages_list,
+                    source_section=c.source_section,
                     evidence_snippet=c.evidence_snippet,
+                    raw_text=c.raw_text,
+                    extraction_confidence=c.extraction_confidence,
                 )
             )
 
-        # Conditional charges separated clearly
+        # Conditional charges separated clearly (never aggregated into one expected total)
         for c in conditional_items:
+            pages_list = sorted({p for p in ([c.source_page] + (c.repeated_on_pages or [])) if p})
+            amt_str = f"₹{c.amount:,.2f}" if c.amount is not None else "Unquantified"
             discrepancies.append(
                 DiscrepancyItem(
                     code="CONDITIONAL_CHARGE_DETECTED",
                     severity=DiscrepancySeverity.INFO,
                     title=f"Conditional Charge Excluded from Upfront Cash Deductions: {c.name}",
                     description=(
-                        f"Conditional fee of ₹{c.amount:,.2f} detected and tracked separately from confirmed upfront recoveries."
+                        f"Conditional fee of {amt_str} ({c.frequency or 'CONDITIONAL'}; {c.payment_timing or 'conditional'}). "
+                        f"Trigger: {c.trigger_condition or 'triggered upon specified event'}. "
+                        f"Caused by borrower action: {c.caused_by_borrower_action}."
                     ),
                     impact_amount=c.amount,
                     source_page=c.source_page,
+                    source_pages=pages_list,
+                    source_section=c.source_section,
                     evidence_snippet=c.evidence_snippet,
+                    raw_text=c.raw_text,
+                    extraction_confidence=c.extraction_confidence,
+                )
+            )
+
+        # Contingent penal charges (percentage-based, non-capitalized)
+        for c in contingent_items:
+            pages_list = sorted({p for p in ([c.source_page] + (c.repeated_on_pages or [])) if p})
+            rate_desc = f"{c.rate_pct:.2f}% ({c.rate_basis})" if c.rate_pct is not None else "contingent charge"
+            cap_desc = " Penal charges are not capitalised." if c.is_capitalized is False else ""
+            discrepancies.append(
+                DiscrepancyItem(
+                    code="CONTINGENT_PENAL_CHARGE",
+                    severity=DiscrepancySeverity.INFO,
+                    title=f"Contingent Penalty Excluded from Upfront Deductions: {c.name}",
+                    description=(
+                        f"{rate_desc} ({c.frequency or 'PER_ANNUM_ON_OVERDUE'}; {c.payment_timing or 'upon default'}). "
+                        f"Trigger: {c.trigger_condition or 'upon payment default'}.{cap_desc}"
+                    ),
+                    impact_amount=c.amount,
+                    source_page=c.source_page,
+                    source_pages=pages_list,
+                    source_section=c.source_section,
+                    evidence_snippet=c.evidence_snippet,
+                    raw_text=c.raw_text,
+                    extraction_confidence=c.extraction_confidence,
+                )
+            )
+
+        # Third-party charges (unquantified OR paid directly by borrower)
+        for c in third_party_items:
+            if c.amount is not None and c.third_party_recovery_method != ThirdPartyRecoveryMethod.PAID_DIRECTLY_BY_BORROWER:
+                continue
+            pages_list = sorted({p for p in ([c.source_page] + (c.repeated_on_pages or [])) if p})
+            method_label = c.third_party_recovery_method.value if c.third_party_recovery_method else "RECOVERY_METHOD_UNKNOWN"
+            discrepancies.append(
+                DiscrepancyItem(
+                    code="UNQUANTIFIED_THIRD_PARTY_CHARGE" if c.amount is None else "DIRECT_BORROWER_THIRD_PARTY_CHARGE",
+                    severity=DiscrepancySeverity.INFO,
+                    title=f"Third-Party Disclosure ({method_label}): {c.name}",
+                    description=(
+                        c.notes or "Third-party charges referenced in document are not deducted from lender disbursement."
+                    ),
+                    impact_amount=c.amount,
+                    source_page=c.source_page,
+                    source_pages=pages_list,
+                    source_section=c.source_section,
+                    evidence_snippet=c.evidence_snippet,
+                    raw_text=c.raw_text,
+                    extraction_confidence=c.extraction_confidence,
                 )
             )
 
         # Unquantified GST / Unknown Net Disbursement finding
         if fee_gst_amount is None and (known_upfront_excl_tax or has_unquantified_tax_note):
+            gst_meta = field_statuses.get("gst_amount", ExtractedFieldInfo())
+            tax_page = gst_meta.source_page
+            tax_sec = gst_meta.source_section
+            tax_ev = gst_meta.evidence_snippet or loan.gst_status_note
+            tax_raw = gst_meta.raw_text
+            linked_services = [c.gst_related_service for c in upfront_non_ins if c.gst_classification == GSTClassification.GST_POTENTIALLY_APPLICABLE and c.gst_related_service]
+            if not tax_ev and upfront_non_ins:
+                tax_page = tax_page or upfront_non_ins[0].source_page
+                tax_sec = tax_sec or upfront_non_ins[0].source_section
+                tax_ev = upfront_non_ins[0].evidence_snippet
+                tax_raw = tax_raw or upfront_non_ins[0].raw_text
+            tax_pages = sorted({p for p in ([tax_page] + [p for c in upfront_non_ins if c.gst_classification == GSTClassification.GST_POTENTIALLY_APPLICABLE for p in c.repeated_on_pages]) if p})
+            svc_desc = f" Applies specifically to: {', '.join(dict.fromkeys(linked_services))}." if linked_services else ""
             discrepancies.append(
                 DiscrepancyItem(
                     code="UNKNOWN_TAX_AND_DISBURSEMENT",
                     severity=DiscrepancySeverity.WARNING,
                     title="Applicable GST & Final Net Disbursement Not Disclosed",
                     description=(
-                        f"Confirmed upfront cash recoveries before tax total ₹{(known_upfront_excl_tax or 0.0):,.2f}, "
-                        "but exact GST amount/rate and final net disbursement are not disclosed in the document. "
-                        "Both GST and net disbursement remain UNKNOWN (APR withheld)."
+                        f"Confirmed upfront cash recoveries before tax total ₹{(known_upfront_excl_tax or 0.0):,.2f} "
+                        f"(GST classification: {report_gst_classification.value}).{svc_desc} "
+                        "Exact GST amount/rate and final net disbursement are not disclosed and remain UNKNOWN (APR withheld)."
                     ),
-                    source_page=field_statuses["gst_amount"].source_page,
-                    evidence_snippet=field_statuses["gst_amount"].evidence_snippet or loan.gst_status_note,
+                    source_page=tax_page,
+                    source_pages=tax_pages,
+                    source_section=tax_sec,
+                    evidence_snippet=tax_ev,
+                    raw_text=tax_raw,
+                    extraction_confidence=gst_meta.extraction_confidence,
                 )
             )
 
         # APR spread alert (only if IRR is computable)
         if rate_inflation_spread is not None and rate_inflation_spread >= 2.0:
+            rate_meta = field_statuses.get("stated_interest_rate", ExtractedFieldInfo())
+            apr_page = rate_meta.source_page or (upfront_non_ins[0].source_page if upfront_non_ins else None)
+            apr_ev = rate_meta.evidence_snippet or (upfront_non_ins[0].evidence_snippet if upfront_non_ins else None)
             discrepancies.append(
                 DiscrepancyItem(
                     code="HIGH_APR_SPREAD",
@@ -972,6 +1104,8 @@ class DeterministicLoanAuditor:
                     impact_amount=round(total_cost_of_borrowing - total_interest_payable, 2)
                     if (total_cost_of_borrowing is not None and total_interest_payable is not None)
                     else None,
+                    source_page=apr_page,
+                    evidence_snippet=apr_ev,
                 )
             )
 
@@ -1041,6 +1175,26 @@ class DeterministicLoanAuditor:
             else None
         )
 
+        # Consolidate repeated borrower-facing findings while keeping all source page references
+        consolidated_map: Dict[Tuple[str, str], DiscrepancyItem] = {}
+        for d in discrepancies:
+            if not d.source_pages and d.source_page is not None:
+                d.source_pages = [d.source_page]
+            key = (d.code, d.title.strip().lower())
+            if key not in consolidated_map:
+                consolidated_map[key] = d
+            else:
+                existing = consolidated_map[key]
+                merged_pages = sorted({p for p in (existing.source_pages + d.source_pages + ([d.source_page] if d.source_page else [])) if p})
+                existing.source_pages = merged_pages
+                if not existing.evidence_snippet and d.evidence_snippet:
+                    existing.evidence_snippet = d.evidence_snippet
+                if not existing.raw_text and d.raw_text:
+                    existing.raw_text = d.raw_text
+                if not existing.source_section and d.source_section:
+                    existing.source_section = d.source_section
+        discrepancies = list(consolidated_map.values())
+
         audit_status = "VERIFIED"
         if has_failed_cv:
             audit_status = "PARTIAL_CROSS_VALIDATION_CONFLICT"
@@ -1065,12 +1219,17 @@ class DeterministicLoanAuditor:
             known_upfront_recoveries_excl_tax=known_upfront_excl_tax,
             fee_gst_amount=fee_gst_amount,
             stated_gst_rate_pct=loan.stated_gst_rate_pct,
+            gst_classification=report_gst_classification,
             gst_status_note=loan.gst_status_note,
             total_upfront_fees_incl_gst=total_upfront_incl_gst,
             bundled_insurance_amount=bundled_ins,
             is_insurance_capitalized=is_ins_cap,
-            conditional_charges_total=conditional_total,
+            conditional_charges_total=None,
+            conditional_charges=conditional_charges_list,
+            contingent_charges_total=contingent_total,
             third_party_charges_total=third_party_total,
+            penal_charge_rate_pct=penal_rate_pct,
+            penal_charges_capitalized=penal_capitalized,
             gross_loan_amount=gross_loan,
             net_disbursed_amount=net_disbursed,
             total_repayment_amount=total_repayment,
@@ -1086,6 +1245,7 @@ class DeterministicLoanAuditor:
             missing_fields=list(dict.fromkeys(loan.missing_fields + missing_core)),
             field_statuses=field_statuses,
             charges_breakdown=charges,
+            document_notes=loan.document_notes,
             cross_validations=cross_validations,
             negotiation_script_blocked=negotiation_blocked,
             negotiation_block_reason=negotiation_reason,
