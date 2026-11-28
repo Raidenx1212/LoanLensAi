@@ -420,22 +420,53 @@ class OpenRouterLLMService:
                 llm_terms.field_metadata["bundled_insurance"] = det_terms.field_metadata["bundled_insurance"]
 
         if det_terms.charges:
-            # Prefer deterministic verified charge list enriched with any extra unique LLM charges,
-            # preserving provenance (source_section, raw_text, GST classification, third-party method, dedup_id).
+            # Prefer deterministic verified charge list (preserving GST reconciliation, section provenance,
+            # raw_text, third-party recovery method, and dedup_id). Only append an LLM charge when it is
+            # genuinely distinct (never duplicate gross vs base processing fee or IMD/Balance components).
             merged_charges = list(det_terms.charges)
-            det_sigs = {
-                (round(c.amount, 2) if c.amount is not None else None, "".join(re.findall(r"[a-z]", c.name.lower()))[:6])
+            det_gross_pf = (
+                round((det_terms.processing_fee or 0.0) + (det_terms.stated_gst_amount or 0.0), 2)
+                if det_terms.processing_fee is not None and det_terms.stated_gst_amount is not None
+                else det_terms.processing_fee
+            )
+            has_det_pf = any("processing" in c.name.lower() or "file handling" in c.name.lower() for c in merged_charges)
+            det_norms = [
+                (
+                    round(c.amount, 2) if c.amount is not None else None,
+                    round(c.rate_pct, 2) if c.rate_pct is not None else None,
+                    "".join(re.findall(r"[a-z]", c.name.lower())),
+                )
                 for c in merged_charges
-            }
+            ]
             for lc in llm_terms.charges:
-                lc_sig = (round(lc.amount, 2) if lc.amount is not None else None, "".join(re.findall(r"[a-z]", lc.name.lower()))[:6])
                 if lc.amount is None and lc.rate_pct is None:
                     continue
-                if any(
-                    ds[0] == lc_sig[0] and ds[1] and lc_sig[1] and (ds[1] in lc_sig[1] or lc_sig[1] in ds[1] or ds[0] is not None)
-                    for ds in det_sigs
+                lc_amt = round(lc.amount, 2) if lc.amount is not None else None
+                lc_rate = round(lc.rate_pct, 2) if lc.rate_pct is not None else None
+                lc_norm = "".join(re.findall(r"[a-z]", lc.name.lower()))
+
+                # Skip duplicate Hero-style processing components or gross vs pre-tax processing fee
+                if has_det_pf and any(
+                    k in lc.name.lower() for k in ("processing", "imd", "file handling", "origination")
                 ):
                     continue
+                if det_gross_pf is not None and lc_amt is not None and abs(lc_amt - det_gross_pf) <= 2.0:
+                    continue
+
+                is_dup = False
+                for d_amt, d_rate, d_norm in det_norms:
+                    if lc_amt is not None and d_amt is not None and abs(lc_amt - d_amt) <= 2.0:
+                        is_dup = True
+                        break
+                    if lc_rate is not None and d_rate is not None and abs(lc_rate - d_rate) <= 0.05:
+                        is_dup = True
+                        break
+                    if d_norm and lc_norm and (d_norm[:6] in lc_norm or lc_norm[:6] in d_norm):
+                        is_dup = True
+                        break
+                if is_dup:
+                    continue
+
                 merged_charges.append(lc)
             llm_terms.charges = merged_charges
             llm_terms.processing_fee = det_terms.processing_fee

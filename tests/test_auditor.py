@@ -340,3 +340,50 @@ def test_direct_borrower_third_party_fee_not_subtracted_from_disbursement():
     assert report.conditional_charges_total is None
     assert len(report.conditional_charges) == 2
     assert report.gst_classification == GSTClassification.GST_RATE_CONFIRMED
+
+
+def test_merge_llm_and_deterministic_no_duplicate_processing_charges():
+    """
+    Merging LLM charges containing gross Processing Fee + IMD + Balance Processing
+    onto deterministic reconciled base Processing Fee + GST must never double-count.
+    """
+    from app.services.llm_service import OpenRouterLLMService
+
+    svc = OpenRouterLLMService()
+    det_terms = ExtractedLoanTerms(
+        lender_name="Hero Housing Finance Limited",
+        principal_amount=4500000.0,
+        stated_interest_rate=10.05,
+        interest_type=InterestRateType.FLOATING,
+        tenure_months=134,
+        processing_fee=45000.0,
+        stated_gst_amount=8100.0,
+        stated_gst_rate_pct=18.0,
+        charges=[
+            ExtractedCharge(
+                name="Processing Fees",
+                amount=45000.0,
+                category=ChargeCategory.CONFIRMED_UPFRONT,
+                gst_classification=GSTClassification.GST_AMOUNT_CONFIRMED,
+                gst_related_service="Processing Fees",
+            )
+        ],
+    )
+    llm_terms = ExtractedLoanTerms(
+        lender_name="Hero Housing Finance Limited",
+        principal_amount=4500000.0,
+        stated_interest_rate=10.05,
+        interest_type=InterestRateType.FLOATING,
+        tenure_months=134,
+        charges=[
+            ExtractedCharge(name="a) IMD", amount=5900.0, category=ChargeCategory.CONFIRMED_UPFRONT),
+            ExtractedCharge(name="b) Processing Fees", amount=53100.0, category=ChargeCategory.CONFIRMED_UPFRONT),
+            ExtractedCharge(name="c) Balance Processing Fees", amount=47200.0, category=ChargeCategory.CONFIRMED_UPFRONT),
+        ],
+    )
+    merged = svc._merge_llm_and_deterministic(llm_terms, det_terms)
+    report = DeterministicLoanAuditor.audit_loan(merged)
+    assert report.known_upfront_recoveries_excl_tax == pytest.approx(45000.0, abs=0.01)
+    assert report.fee_gst_amount == pytest.approx(8100.0, abs=0.01)
+    assert report.total_upfront_fees_incl_gst == pytest.approx(53100.0, abs=0.01)
+    assert report.net_disbursed_amount == pytest.approx(4500000.0 - 53100.0, abs=1.0)
