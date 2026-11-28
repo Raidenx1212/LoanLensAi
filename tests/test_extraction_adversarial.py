@@ -228,13 +228,39 @@ def test_hero_housing_multipage_real_pdf():
     assert report.is_emi_matching is True
     assert report.raw_processing_fee == 53100.0
     assert report.bundled_insurance_amount == 25000.0
+    # Title Search Charges ("applicable only for Mumbai Metropolitan Region") classified CONDITIONAL, not mandatory upfront
+    assert report.known_upfront_recoveries_excl_tax == 53100.0
+    assert report.conditional_charges_total is None
+    title_cond = next((c for c in report.conditional_charges if "title search" in c.name.lower()), None)
+    assert title_cond is not None
+    assert title_cond.amount == 2500.0
+    assert "mumbai metropolitan" in (title_cond.trigger_condition or "").lower()
+
+    # Bounce charge on Page 4 captured accurately as PER_BOUNCE_EVENT (NOT assisted mandate setup!)
+    bounce_cond = next((c for c in report.conditional_charges if "bounce" in c.name.lower()), None)
+    assert bounce_cond is not None
+    assert bounce_cond.source_page == 4
+    assert bounce_cond.frequency == "PER_BOUNCE_EVENT"
+    assert "mandate setup" not in (bounce_cond.trigger_condition or "").lower()
+    assert bounce_cond.source_section == "GENERAL TERMS AND CONDITIONS"
+
+    # Penal Charge on Page 4 captured as 2.00% per month (NOT per annum, NOT merged with Clause 26)
+    penal_cond = next((c for c in report.conditional_charges if "penal" in c.name.lower()), None)
+    assert penal_cond is not None
+    assert penal_cond.frequency == "PER_MONTH_ON_OVERDUE"
+    assert "per month" in (penal_cond.rate_basis or "").lower()
+    assert "26." not in (penal_cond.evidence_snippet or "")
+    assert penal_cond.source_section == "GENERAL TERMS AND CONDITIONS"
+
+    # Customer-Funded Insurance surfaced in charge reconciliation and findings
+    assert any("insurance" in c.name.lower() and c.amount == 25000.0 for c in report.charges_breakdown)
+    assert any(d.code == "BUNDLED_INSURANCE" and d.impact_amount == 25000.0 for d in report.discrepancies)
+
     # Processing Charges states "1.00% + Applicable taxes" without explicit GST %, so GST & Net remain UNKNOWN
     assert report.fee_gst_amount is None
     assert report.net_disbursed_amount is None
     assert report.is_irr_computable is False
     assert report.rbi_compliance_score is None
-    # Bounce charge on Page 4 captured as conditional
-    assert any(c.category == ChargeCategory.CONDITIONAL and c.source_page == 4 for c in report.charges_breakdown)
 
 
 def test_northstar_three_page_adversarial_sanction_letter():

@@ -962,7 +962,7 @@ class DeterministicLoanAuditor:
                 )
             )
 
-        # Upfront insurance finding
+        # Upfront / customer-funded insurance finding
         for c in upfront_ins:
             pages_list = sorted({p for p in ([c.source_page] + (c.repeated_on_pages or [])) if p})
             discrepancies.append(
@@ -978,6 +978,24 @@ class DeterministicLoanAuditor:
                     evidence_snippet=c.evidence_snippet,
                     raw_text=c.raw_text,
                     extraction_confidence=c.extraction_confidence,
+                )
+            )
+        if not upfront_ins and not is_ins_cap and bundled_ins is not None and bundled_ins > 0:
+            ins_meta = field_statuses.get("bundled_insurance", ExtractedFieldInfo())
+            ins_pages = [ins_meta.source_page] if ins_meta.source_page else []
+            discrepancies.append(
+                DiscrepancyItem(
+                    code="BUNDLED_INSURANCE",
+                    severity=DiscrepancySeverity.WARNING if (principal and bundled_ins < 0.03 * principal) else DiscrepancySeverity.CRITICAL,
+                    title="Customer-Funded / Upfront Insurance Premium Detected",
+                    description=f"₹{bundled_ins:,.2f} insurance premium is disclosed as customer-funded / non-financed cover.",
+                    impact_amount=bundled_ins,
+                    source_page=ins_meta.source_page,
+                    source_pages=ins_pages,
+                    source_section=ins_meta.source_section,
+                    evidence_snippet=ins_meta.evidence_snippet,
+                    raw_text=ins_meta.raw_text,
+                    extraction_confidence=ins_meta.extraction_confidence,
                 )
             )
 

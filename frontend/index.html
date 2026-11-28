@@ -290,10 +290,12 @@
           </div>
           <div class="flex items-center space-x-2">
             <select id="select-ai-model" onchange="onModelChange(this.value)" class="text-xs font-bold rounded-xl bg-slate-50 border border-slate-300 px-3 py-1.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer shadow-xs">
-              <option value="google/gemini-2.5-flash" selected>Gemini 2.5 Flash (Default • Zero Hallucination)</option>
+              <option value="openai/gpt-4o-mini" selected>GPT-4o Mini (Default • Fast &amp; ZDR Compatible)</option>
+              <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B Instruct (Meta • ZDR Compatible)</option>
               <option value="openai/gpt-4o">GPT-4o (OpenAI Flagship)</option>
               <option value="anthropic/claude-sonnet-4.5">Claude Sonnet 4.5 (Anthropic)</option>
               <option value="mistralai/mistral-large-2512">Mistral Large (Mistral AI)</option>
+              <option value="google/gemini-2.5-flash">Gemini 2.5 Flash (Google)</option>
             </select>
           </div>
         </div>
@@ -910,7 +912,11 @@
     }
 
     function getStoredModel() {
-      return localStorage.getItem('loanlens_preferred_model') || 'google/gemini-2.5-flash';
+      const saved = localStorage.getItem('loanlens_preferred_model');
+      if (!saved || saved === 'google/gemini-2.5-flash') {
+        return 'openai/gpt-4o-mini';
+      }
+      return saved;
     }
 
     function onModelChange(val) {

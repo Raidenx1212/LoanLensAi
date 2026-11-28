@@ -23,12 +23,17 @@ logger = logging.getLogger(__name__)
 
 # Resilient model aliases mapping to active OpenRouter models
 MODEL_ALIASES = {
-    "anthropic/claude-3.5-sonnet": "google/gemini-2.5-flash",
-    "anthropic/claude-3-5-sonnet": "google/gemini-2.5-flash",
+    "anthropic/claude-3.5-sonnet": "anthropic/claude-sonnet-4.5",
+    "anthropic/claude-3-5-sonnet": "anthropic/claude-sonnet-4.5",
     "mistralai/mistral-large-2411": "mistralai/mistral-large-2512",
-    "google/gemini-2.0-flash-001": "google/gemini-2.5-flash",
-    "google/gemini-2.0-flash": "google/gemini-2.5-flash",
+    "google/gemini-2.0-flash-001": "openai/gpt-4o-mini",
+    "google/gemini-2.0-flash": "openai/gpt-4o-mini",
 }
+
+FALLBACK_ZDR_MODELS = [
+    "openai/gpt-4o-mini",
+    "meta-llama/llama-3.3-70b-instruct",
+]
 
 WORDS_NUM_MAP = {
     "ninety five": 95, "eighty five": 85, "seventy five": 75, "sixty five": 65,
@@ -46,7 +51,8 @@ class OpenRouterLLMService:
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or settings.OPENROUTER_API_KEY
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
-        self.model = model or getattr(settings, "DEFAULT_LLM_MODEL", "google/gemini-2.5-flash")
+        self.model = model or getattr(settings, "DEFAULT_LLM_MODEL", "openai/gpt-4o-mini")
+        self._last_used_model: Optional[str] = None
 
     async def _call_openrouter(
         self,
@@ -62,6 +68,7 @@ class OpenRouterLLMService:
 
         requested_model = model_name or self.model
         chosen_model = MODEL_ALIASES.get(requested_model, requested_model)
+        candidates = [chosen_model] + [m for m in FALLBACK_ZDR_MODELS if m != chosen_model]
 
         headers = {
             "Authorization": f"Bearer {key}",
@@ -69,19 +76,40 @@ class OpenRouterLLMService:
             "X-Title": "LoanLens AI Auditor",
             "Content-Type": "application/json",
         }
-        payload: Dict[str, Any] = {
-            "model": chosen_model,
-            "messages": messages,
-            "temperature": temperature,
-        }
-        if response_format:
-            payload["response_format"] = response_format
 
+        last_err: Optional[Exception] = None
         async with httpx.AsyncClient(timeout=httpx.Timeout(45.0, connect=5.0)) as client:
-            response = await client.post(self.base_url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
+            for candidate in candidates:
+                payload: Dict[str, Any] = {
+                    "model": candidate,
+                    "messages": messages,
+                    "temperature": temperature,
+                }
+                if response_format:
+                    payload["response_format"] = response_format
+                try:
+                    response = await client.post(self.base_url, headers=headers, json=payload)
+                    if response.status_code == 400 and response_format:
+                        payload.pop("response_format", None)
+                        response = await client.post(self.base_url, headers=headers, json=payload)
+                    if response.status_code in (400, 404, 429):
+                        logger.warning(f"OpenRouter model {candidate} returned HTTP {response.status_code}; trying next fallback model.")
+                        last_err = httpx.HTTPStatusError(
+                            f"HTTP {response.status_code}", request=response.request, response=response
+                        )
+                        continue
+                    response.raise_for_status()
+                    data = response.json()
+                    self._last_used_model = candidate
+                    return data["choices"][0]["message"]["content"]
+                except httpx.HTTPStatusError as exc:
+                    last_err = exc
+                    if exc.response.status_code in (400, 404, 429):
+                        continue
+                    raise
+            if last_err is not None:
+                raise last_err
+            raise ValueError("No OpenRouter model candidates available.")
 
     async def extract_loan_parameters(
         self,
@@ -112,14 +140,15 @@ class OpenRouterLLMService:
             "3. Only return 0 or 0.0 if the document explicitly states '0', 'Zero', or 'Nil'.\n"
             "4. Distinguish Sanctioned Principal vs Opening Financed Balance (e.g. principal + financed insurance).\n"
             "5. Distinguish Interest Rate vs Reference/Benchmark Rate or Penal/Prepayment %.\n"
-            "6. Separate ALL charges across all pages/footnotes into categories:\n"
-            "   - 'confirmed_upfront': confirmed upfront cash fees/recoveries (processing fee, other cash recoveries, CERSAI, valuation, etc.)\n"
-            "   - 'financed': insurance or fees capitalized/financed into loan balance\n"
-            "   - 'conditional': conditional/contingent fees (e.g. mandate/NACH setup or bounce fee applicable conditionally)\n"
+            "6. Separate ALL charges across all pages/footnotes strictly by category:\n"
+            "   - 'confirmed_upfront': mandatory upfront cash fees/recoveries in INR (NEVER put a % rate like '1.00%' into amount=1.0; if (a) IMD + (c) Balance Processing Fees == (b) Processing Fees, include ONLY (b) so it is not double-counted)\n"
+            "   - 'financed': insurance or fees capitalized/financed into opening loan balance\n"
+            "   - 'conditional': conditional fees (e.g. 'applicable only for Mumbai Metropolitan Region', assisted mandate setup, Cheque/NACH bounce INR 1000 per bounce, conversion/repricing)\n"
+            "   - 'contingent': percentage-based default/penal charges (set amount=null, rate_pct=2.0, rate_basis='2% per month on overdue payment')\n"
             "   - 'third_party': third-party charges payable outside lender deductions\n"
-            "7. GST: Extract stated_gst_amount ONLY if an exact rupee GST amount is written; extract stated_gst_rate_pct ONLY if an explicit % like '18% GST' is written. If it only says 'plus applicable GST', return null for both and put 'plus applicable GST' in gst_status_note. NEVER assume 18%.\n"
+            "7. GST: Extract stated_gst_amount ONLY if an exact rupee GST amount is written; extract stated_gst_rate_pct ONLY if an explicit % like '18% GST' is written. If it only says 'plus applicable GST' or '+ Applicable taxes', return null for both and put the phrase in gst_status_note. NEVER assume 18%.\n"
             "8. Net Disbursement: Extract stated_net_disbursement ONLY if explicitly stated. Otherwise return null.\n"
-            "9. Every field and charge MUST include source_page (int) and verbatim evidence_snippet.\n\n"
+            "9. Every field and charge MUST include source_page (int) and minimal verbatim evidence_snippet.\n\n"
             "Return ONLY valid JSON matching:\n"
             "{\n"
             '  "lender_name": {"value": "string or null", "status": "CONFIRMED|NOT_FOUND|UNCERTAIN", "source_page": int_or_null, "evidence_snippet": "string or null"},\n'
@@ -168,7 +197,8 @@ class OpenRouterLLMService:
             raw_json = json.loads(clean_str.strip())
 
             # Parse LLM response and cross-check with deterministic page extractor
-            llm_terms = self._build_terms_from_llm_json(raw_json, chosen_model)
+            effective_model = self._last_used_model or chosen_model
+            llm_terms = self._build_terms_from_llm_json(raw_json, effective_model)
             det_terms = self._deterministic_page_extract(parsed_pages)
             return self._merge_llm_and_deterministic(llm_terms, det_terms)
         except Exception:
@@ -218,6 +248,8 @@ class OpenRouterLLMService:
         for ch in raw_json.get("charges") or []:
             if not isinstance(ch, dict):
                 continue
+            cname = str(ch.get("name") or "Charge")
+            ev_text = str(ch.get("evidence_snippet") or "")
             try:
                 cat = ChargeCategory(str(ch.get("category", "confirmed_upfront")).lower())
             except ValueError:
@@ -229,17 +261,54 @@ class OpenRouterLLMService:
             amt = ch.get("amount")
             if isinstance(amt, str):
                 amt = self._parse_plain_number(amt)
+            amt_val = float(amt) if amt is not None else None
+            rate_pct_val = ch.get("rate_pct")
+            rate_basis_val = ch.get("rate_basis")
+
+            # Guard against LLM converting percentage rule (e.g. "1.00% + Applicable taxes") into INR 1.0
+            if amt_val is not None and amt_val <= 20.0 and "%" in f"{cname} {ev_text}":
+                if re.search(r"penal|default", f"{cname} {ev_text}", re.IGNORECASE):
+                    cat = ChargeCategory.CONTINGENT
+                    rate_pct_val = rate_pct_val or amt_val
+                    amt_val = None
+                else:
+                    continue
+
+            # Guard against LLM putting penal/default rate under conditional amount instead of contingent rate_pct
+            if re.search(r"penal|default\s*interest", f"{cname} {ev_text}", re.IGNORECASE) and (amt_val is None or amt_val <= 50.0):
+                cat = ChargeCategory.CONTINGENT
+                rate_pct_val = rate_pct_val or amt_val
+                amt_val = None
+
             charges.append(
                 ExtractedCharge(
-                    name=str(ch.get("name") or "Charge"),
-                    amount=float(amt) if amt is not None else None,
+                    name=cname,
+                    amount=amt_val,
+                    rate_pct=float(rate_pct_val) if rate_pct_val is not None else None,
+                    rate_basis=rate_basis_val,
                     category=cat,
                     status=st,
                     source_page=ch.get("source_page"),
-                    evidence_snippet=ch.get("evidence_snippet"),
+                    evidence_snippet=ev_text or None,
                     tax_note=ch.get("tax_note"),
                 )
             )
+
+        # Deduplicate Hero-style (a) IMD + (c) Balance == (b) Processing Fees if LLM emitted all three
+        imd_items = [c for c in charges if c.category == ChargeCategory.CONFIRMED_UPFRONT and "imd" in c.name.lower()]
+        bal_items = [c for c in charges if c.category == ChargeCategory.CONFIRMED_UPFRONT and "balance processing" in c.name.lower()]
+        gross_pf_items = [
+            c for c in charges
+            if c.category == ChargeCategory.CONFIRMED_UPFRONT
+            and "processing" in c.name.lower()
+            and "balance" not in c.name.lower()
+        ]
+        if imd_items and bal_items and gross_pf_items:
+            imd_v = imd_items[0].amount or 0.0
+            bal_v = bal_items[0].amount or 0.0
+            gross_v = gross_pf_items[0].amount or 0.0
+            if abs((imd_v + bal_v) - gross_v) <= 2.0:
+                charges = [c for c in charges if c not in imd_items and c not in bal_items]
 
         upfront_charges = [c for c in charges if c.category == ChargeCategory.CONFIRMED_UPFRONT and c.amount is not None]
         financed_charges = [c for c in charges if c.category == ChargeCategory.FINANCED and c.amount is not None]
@@ -338,13 +407,40 @@ class OpenRouterLLMService:
             if "interest_type" in det_terms.field_metadata:
                 llm_terms.field_metadata["interest_type"] = det_terms.field_metadata["interest_type"]
 
-        if not llm_terms.charges and det_terms.charges:
-            llm_terms.charges = det_terms.charges
+        # Guard against hallucinated opening_financed_balance conflicting with deterministic document scan
+        if llm_terms.opening_financed_balance is not None and det_terms.opening_financed_balance is None:
+            llm_terms.opening_financed_balance = None
+            llm_terms.field_metadata["opening_financed_balance"] = ExtractedFieldInfo(status=FieldStatus.NOT_FOUND)
+
+        # Backfill bundled_insurance & provenance when LLM omitted non-capitalized/customer-funded insurance
+        if llm_terms.bundled_insurance is None and det_terms.bundled_insurance is not None:
+            llm_terms.bundled_insurance = det_terms.bundled_insurance
+            llm_terms.is_insurance_capitalized = det_terms.is_insurance_capitalized
+            if "bundled_insurance" in det_terms.field_metadata:
+                llm_terms.field_metadata["bundled_insurance"] = det_terms.field_metadata["bundled_insurance"]
+
+        if det_terms.charges:
+            # Prefer deterministic verified charge list enriched with any extra unique LLM charges,
+            # preserving provenance (source_section, raw_text, GST classification, third-party method, dedup_id).
+            merged_charges = list(det_terms.charges)
+            det_sigs = {
+                (round(c.amount, 2) if c.amount is not None else None, "".join(re.findall(r"[a-z]", c.name.lower()))[:6])
+                for c in merged_charges
+            }
+            for lc in llm_terms.charges:
+                lc_sig = (round(lc.amount, 2) if lc.amount is not None else None, "".join(re.findall(r"[a-z]", lc.name.lower()))[:6])
+                if lc.amount is None and lc.rate_pct is None:
+                    continue
+                if any(
+                    ds[0] == lc_sig[0] and ds[1] and lc_sig[1] and (ds[1] in lc_sig[1] or lc_sig[1] in ds[1] or ds[0] is not None)
+                    for ds in det_sigs
+                ):
+                    continue
+                merged_charges.append(lc)
+            llm_terms.charges = merged_charges
             llm_terms.processing_fee = det_terms.processing_fee
             llm_terms.documentation_charges = det_terms.documentation_charges
             llm_terms.other_cash_recoveries = det_terms.other_cash_recoveries
-            llm_terms.bundled_insurance = det_terms.bundled_insurance
-            llm_terms.is_insurance_capitalized = det_terms.is_insurance_capitalized
 
         if not llm_terms.document_notes and det_terms.document_notes:
             llm_terms.document_notes = det_terms.document_notes
@@ -414,13 +510,20 @@ class OpenRouterLLMService:
         clean = re.sub(r"\s+", " ", line).strip()
         if not clean or len(clean) > 100:
             return None
+        # Ignore page headers/footers like "Sanction Letter Page 3 of 4"
+        if re.search(r"\bPage\s+\d+\s+of\s+\d+\b", clean, re.IGNORECASE):
+            return None
         if re.match(
             r"^(?:Section|Annexure|Schedule|Appendix|Part)\s+[A-Z0-9]+(?:\s*[-:–.]\s*.*)?$",
             clean,
             re.IGNORECASE,
         ):
             return clean.rstrip(":")
-        if re.match(r"^(?:Footnotes?|General\s+Notes?|Key\s+Fact\s+Statement|Sanction\s+Letter|Terms\s*(?:&|and)\s*Conditions)\s*[:\-–]?.*$", clean, re.IGNORECASE):
+        if re.match(r"^(?:GENERAL|SPECIAL)\s+TERMS\s+AND\s+CONDITIONS$", clean, re.IGNORECASE):
+            return clean
+        if re.match(r"^Particulars\s+Description$", clean, re.IGNORECASE):
+            return "Key Facility Particulars"
+        if re.match(r"^(?:Footnotes?|General\s+Notes?|Key\s+Fact\s+Statement|Terms\s*(?:&|and)\s*Conditions)\s*[:\-–]?.*$", clean, re.IGNORECASE):
             if len(clean) <= 75 and "|" not in clean:
                 return clean.rstrip(":")
         if re.match(r"^(?:[A-Z]|\d+)\.\s+[A-Z][A-Za-z0-9\s/&(),-]{2,65}$", clean) and "|" not in clean and not re.search(r"\b(?:INR|Rs\.?)\b|%", clean, re.IGNORECASE):
@@ -996,6 +1099,32 @@ class OpenRouterLLMService:
                     )
                 else:
                     field_metadata["bundled_insurance"] = ins_info
+                    is_cust_funded = bool(re.search(r"customer\s*funded", ins_info.evidence_snippet or "", re.IGNORECASE))
+                    charges.append(
+                        ExtractedCharge(
+                            name="Customer-Funded Insurance" if is_cust_funded else "Bundled Insurance (Upfront)",
+                            amount=ins_amt,
+                            category=ChargeCategory.THIRD_PARTY if is_cust_funded else ChargeCategory.CONFIRMED_UPFRONT,
+                            trigger_condition="Customer-funded insurance premium selected at onboarding" if is_cust_funded else "Upfront insurance premium deduction",
+                            frequency="ONE_TIME",
+                            payment_timing="paid/funded separately by customer" if is_cust_funded else "deducted upfront from disbursement",
+                            caused_by_borrower_action=is_cust_funded,
+                            mandatory_status="CUSTOMER_FUNDED" if is_cust_funded else "MANDATORY",
+                            is_mandatory=not is_cust_funded,
+                            is_capitalized=False,
+                            gst_classification=GSTClassification.GST_UNKNOWN,
+                            third_party_recovery_method=(
+                                ThirdPartyRecoveryMethod.PAID_DIRECTLY_BY_BORROWER if is_cust_funded else None
+                            ),
+                            status=FieldStatus.CONFIRMED,
+                            source_page=ins_info.source_page,
+                            source_section=ins_info.source_section,
+                            evidence_snippet=ins_info.evidence_snippet,
+                            raw_text=ins_info.raw_text,
+                            extraction_confidence=ins_info.extraction_confidence,
+                            dedup_id=f"{'third_party' if is_cust_funded else 'confirmed_upfront'}:insurance:{round(ins_amt, 2)}",
+                        )
+                    )
 
         # 8. Explicit GST Amount, GST Rate %, and Tax Status Note (NEVER invent 18%!)
         gst_amt: Optional[float] = None
@@ -1277,7 +1406,12 @@ class OpenRouterLLMService:
                         continue
 
                     next_line = lines[i + 1] if i + 1 < len(lines) else ""
-                    cond_ctx = line + (" " + next_line if next_line and not re.match(r"^(?:\d+\.|[A-Z]\.|[A-Z]-\d)", next_line) else "")
+                    next_is_separate_item = bool(
+                        not next_line
+                        or re.match(r"^(?:\d+\.|[A-Z]\.|[a-z]\)\s+|[A-Z]-\d)", next_line)
+                        or re.search(r"INR\s*[\d,]+", next_line, re.IGNORECASE)
+                    )
+                    cond_ctx = line if next_is_separate_item else f"{line} {next_line}"
 
                     # Override category to CONDITIONAL only when conditional applicability governs the fee itself
                     # (ignore account-opening debits and balance-reconciliation caveats like "any unutilised balance, if applicable")
@@ -1292,7 +1426,7 @@ class OpenRouterLLMService:
                         re.search(r"when\s+the\s+loan\s+account\s+is\s+opened|account[-\s]*opening\s*debit", cond_ctx, re.IGNORECASE)
                     )
                     if effective_cat != ChargeCategory.FINANCED and not is_account_opening_debit and re.search(
-                        r"\b(?:conditional|if\s+applicable|upon\s+failure|in\s+case\s+of|contingent|if\s+mandate|if\s+the\s+account|if\s+an\s+install?ment|per\s+event|if\s+dishonour|may\s+be\s+collected\s+if|may\s+be\s+applied|applies\s+only\s+where)\b",
+                        r"\b(?:conditional|if\s+applicable|applicable\s+only\s+(?:for|in|to|if|where|when)|upon\s+failure|in\s+case\s+of|contingent|if\s+mandate|if\s+the\s+account|if\s+an\s+install?ment|per\s+event|per\s+bounce|if\s+dishonour|may\s+be\s+collected\s+if|may\s+be\s+applied|applies\s+only\s+where)\b",
                         cond_clean_ctx,
                         re.IGNORECASE,
                     ):
@@ -1413,20 +1547,29 @@ class OpenRouterLLMService:
                         mandatory_status = "CONDITIONAL"
                         is_mandatory = False
                         is_cap = False
-                        caused_by_action = True
-                        if "mandate" in clean_name.lower() or "nach" in clean_name.lower():
+                        cond_clause_m = re.search(r"(applicable\s+only\s+(?:for|in|to|if|where|when)\s+[^.)]+)", cond_ctx, re.IGNORECASE)
+                        if "bounce" in clean_name.lower() or "dishonour" in clean_name.lower() or "return" in clean_name.lower() or "per bounce" in cond_ctx.lower():
+                            caused_by_action = True
+                            payment_timing = "per bounce event"
+                            frequency = "PER_BOUNCE_EVENT"
+                            trigger_cond = "Triggered upon cheque or NACH/ECS bounce or dishonour"
+                        elif "mandate" in clean_name.lower() or "nach" in clean_name.lower():
+                            caused_by_action = True
                             payment_timing = "at mandate setup if assisted channel used"
                             frequency = "ONE_TIME"
                             trigger_cond = "Applies only when assisted/manual mandate setup route is used instead of self-service"
                         elif "overdue" in clean_name.lower():
+                            caused_by_action = True
                             payment_timing = "per overdue event"
                             frequency = "PER_OVERDUE_EVENT"
                             trigger_cond = "Triggered when an instalment remains unpaid beyond due date"
-                        elif "bounce" in clean_name.lower() or "dishonour" in clean_name.lower() or "return" in clean_name.lower():
-                            payment_timing = "per bounce / dishonour event"
-                            frequency = "PER_EVENT"
-                            trigger_cond = "Triggered upon ECS/NACH/cheque dishonour"
+                        elif cond_clause_m:
+                            caused_by_action = False
+                            payment_timing = "conditional upon geographic / transaction applicability"
+                            frequency = "CONDITIONAL_ONE_TIME"
+                            trigger_cond = cond_clause_m.group(1).strip()
                         else:
+                            caused_by_action = True
                             payment_timing = "conditional upon trigger event"
                             frequency = "CONDITIONAL"
                             trigger_cond = "Applies only when the specified conditional trigger occurs"
@@ -1512,55 +1655,69 @@ class OpenRouterLLMService:
                     )
                     break
 
-        # Pass B: Contingent percentage-based penal charges across multi-line paragraphs
+        # Pass B: Contingent percentage-based penal charges across multi-line paragraphs (stop at next numbered clause!)
         for pr in page_records:
             p_num = pr["page"]
             lines = pr["norm_lines"]
             raw_lines = pr["raw_lines"]
             sections = pr["sections"]
             for i, line in enumerate(lines):
-                pm_penal = re.search(r"\bpenal\s*(?:charges?|interest)|default\s*interest", line, re.IGNORECASE)
+                pm_penal = re.search(r"\bpenal\s*(?:charges?|interest)|default\s*(?:&|and)?\s*penal\s*charges?|default\s*interest", line, re.IGNORECASE)
                 if pm_penal:
                     win_lines = [line]
                     raw_win_lines = [raw_lines[i]]
-                    if i + 1 < len(lines):
-                        win_lines.append(lines[i + 1])
-                        raw_win_lines.append(raw_lines[i + 1])
-                    if i + 2 < len(lines):
-                        win_lines.append(lines[i + 2])
-                        raw_win_lines.append(raw_lines[i + 2])
+                    for step in (1, 2):
+                        if i + step < len(lines):
+                            nxt = lines[i + step]
+                            # Do not bleed into a subsequent numbered/lettered clause like "26. If a change..."
+                            if re.match(r"^(?:\d{1,2}\.|[A-Z]\.|[a-z]\))\s+", nxt):
+                                break
+                            win_lines.append(nxt)
+                            raw_win_lines.append(raw_lines[i + step])
                     para_win = " ".join(win_lines)
                     raw_para_win = " ".join(raw_win_lines)
                     penal_pos = para_win.lower().find("penal")
                     if penal_pos < 0:
                         penal_pos = pm_penal.start()
+                    single_sent_norm = self._pick_sentence_at_offset(para_win, penal_pos)
+                    single_sent_raw = self._pick_sentence_at_offset(raw_para_win, min(penal_pos, max(len(raw_para_win) - 1, 0)))
                     pct_m = re.search(
                         r"(\d+(?:\.\d+)?)\s*%\s*(?:per\s*annum|p\.?\s*a\.?|per\s*month|p\.?\s*m\.?)?",
-                        para_win[penal_pos:],
+                        single_sent_norm[single_sent_norm.lower().find("penal"):] if "penal" in single_sent_norm.lower() else single_sent_norm,
                         re.IGNORECASE,
                     )
                     if pct_m:
                         rate_val = float(pct_m.group(1))
-                        dedup_id = f"contingent:penalcharg:{round(rate_val, 2)}"
+                        is_monthly_rate = bool(re.search(r"per\s*month|p\.?\s*m\.?", pct_m.group(0), re.IGNORECASE))
+                        freq_val = "PER_MONTH_ON_OVERDUE" if is_monthly_rate else "PER_ANNUM_ON_OVERDUE"
+                        default_basis = (
+                            f"{rate_val:.2f}% per month on overdue payment ({rate_val * 12.0:.2f}% p.a. annualized)"
+                            if is_monthly_rate
+                            else f"{rate_val:.2f}% per annum on overdue amount"
+                        )
+                        dedup_id = f"contingent:penalcharg:{round(rate_val, 2)}:{'m' if is_monthly_rate else 'a'}"
                         if not any(c.dedup_id == dedup_id for c in found):
                             not_cap = bool(re.search(r"penal\s*charges?\s*(?:are|is)\s*not\s*capitalis?ed", para_win, re.IGNORECASE))
                             basis_m = re.search(
-                                r"(?:calculated\s*on\s*[^.]+|at\s*\d+(?:\.\d+)?\s*%[^.]+)",
-                                para_win,
+                                r"(?:calculated\s*on\s*[^.]+|is\s*\d+(?:\.\d+)?\s*%[^.]+|at\s*\d+(?:\.\d+)?\s*%[^.]+)",
+                                single_sent_norm,
                                 re.IGNORECASE,
                             )
-                            min_ev = self._pick_sentence_at_offset(para_win, penal_pos)[:320]
-                            raw_ev = self._pick_sentence_at_offset(raw_para_win, min(penal_pos, max(len(raw_para_win) - 1, 0)))[:320]
+                            rate_basis_txt = default_basis if is_monthly_rate else (basis_m.group(0).strip()[:120] if basis_m else default_basis)
                             found.append(
                                 ExtractedCharge(
                                     name="Penal Charge",
                                     amount=None,
                                     rate_pct=rate_val,
-                                    rate_basis=basis_m.group(0).strip()[:120] if basis_m else f"{rate_val:.2f}% per annum on overdue amount",
+                                    rate_basis=rate_basis_txt,
                                     currency="INR",
                                     category=ChargeCategory.CONTINGENT,
-                                    trigger_condition="Calculated on overdue amount for the period of default",
-                                    frequency="PER_ANNUM_ON_OVERDUE",
+                                    trigger_condition=(
+                                        "Calculated monthly on overdue payment for the period of default"
+                                        if is_monthly_rate
+                                        else "Calculated on overdue amount for the period of default"
+                                    ),
+                                    frequency=freq_val,
                                     payment_timing="upon default / overdue period",
                                     caused_by_borrower_action=True,
                                     mandatory_status="CONTINGENT",
@@ -1571,8 +1728,8 @@ class OpenRouterLLMService:
                                     status=FieldStatus.CONFIRMED,
                                     source_page=p_num,
                                     source_section=sections[i] if i < len(sections) else None,
-                                    evidence_snippet=min_ev,
-                                    raw_text=raw_ev,
+                                    evidence_snippet=single_sent_norm[:320],
+                                    raw_text=single_sent_raw[:320],
                                     extraction_confidence="HIGH",
                                     dedup_id=dedup_id,
                                     notes="Penal charges are not capitalised" if not_cap else "Contingent upon payment default",
