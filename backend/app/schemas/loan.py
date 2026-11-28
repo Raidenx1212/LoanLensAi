@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -27,8 +27,56 @@ class LoanCategory(str, Enum):
     OTHER = "other"
 
 
+class FieldStatus(str, Enum):
+    CONFIRMED = "CONFIRMED"
+    NOT_FOUND = "NOT_FOUND"
+    UNCERTAIN = "UNCERTAIN"
+    USER_VERIFIED = "USER_VERIFIED"
+
+
+class ChargeCategory(str, Enum):
+    CONFIRMED_UPFRONT = "confirmed_upfront"
+    CONDITIONAL = "conditional"
+    FINANCED = "financed"
+    THIRD_PARTY = "third_party"
+
+
+class CrossValidationStatus(str, Enum):
+    PASS = "PASS"
+    FAIL = "FAIL"
+    WARNING = "WARNING"
+    SKIPPED_MISSING_DATA = "SKIPPED_MISSING_DATA"
+
+
+class ExtractedFieldInfo(BaseModel):
+    status: FieldStatus = FieldStatus.NOT_FOUND
+    source_page: Optional[int] = None
+    evidence_snippet: Optional[str] = None
+    note: Optional[str] = None
+
+
+class ExtractedCharge(BaseModel):
+    name: str
+    amount: Optional[float] = Field(default=None, ge=0)
+    category: ChargeCategory
+    status: FieldStatus = FieldStatus.CONFIRMED
+    source_page: Optional[int] = None
+    evidence_snippet: Optional[str] = None
+    tax_note: Optional[str] = None
+
+
+class CrossValidationResult(BaseModel):
+    check_name: str
+    status: CrossValidationStatus
+    summary: str
+    expected_value: Optional[str] = None
+    actual_value: Optional[str] = None
+    source_page: Optional[int] = None
+    evidence_snippet: Optional[str] = None
+
+
 # =====================================================================
-# 1. EXTRACTED DATA SCHEMA (Produced by OpenRouter LLM, Zero Math)
+# 1. EXTRACTED DATA SCHEMA (Zero False Zeros, Evidence-Backed)
 # =====================================================================
 class ExtractedLoanTerms(BaseModel):
     lender_name: Optional[str] = Field(
@@ -37,54 +85,90 @@ class ExtractedLoanTerms(BaseModel):
     loan_category: LoanCategory = Field(
         default=LoanCategory.PERSONAL, description="Type of loan"
     )
-    principal_amount: float = Field(
-        default=0.0, ge=0, description="Sanctioned principal loan amount in INR"
+    principal_amount: Optional[float] = Field(
+        default=None, ge=0, description="Sanctioned principal loan amount in INR; None if NOT_FOUND"
     )
-    stated_interest_rate: float = Field(
-        default=0.0, ge=0, description="Annual nominal interest rate as stated (e.g. 10.5 for 10.5%)"
+    opening_financed_balance: Optional[float] = Field(
+        default=None, ge=0, description="Opening financed/capitalized loan balance if stated; None if NOT_FOUND"
+    )
+    stated_interest_rate: Optional[float] = Field(
+        default=None, ge=0, description="Annual nominal interest rate as stated; None if NOT_FOUND"
     )
     interest_type: InterestRateType = Field(
         default=InterestRateType.UNKNOWN,
         description="Whether interest is calculated on reducing balance, flat balance, fixed, or floating",
     )
-    tenure_months: int = Field(
-        default=0, ge=0, description="Total loan tenure in calendar months"
+    tenure_months: Optional[int] = Field(
+        default=None, ge=0, description="Total loan tenure in calendar months; None if NOT_FOUND"
     )
     stated_emi: Optional[float] = Field(
-        default=None, ge=0, description="Monthly EMI stated in sanction letter / KFS"
+        default=None, ge=0, description="Monthly EMI stated in sanction letter / KFS; None if NOT_FOUND"
     )
-    processing_fee: float = Field(
-        default=0.0, ge=0, description="Upfront processing fee before GST"
+    processing_fee: Optional[float] = Field(
+        default=None, ge=0, description="Upfront processing fee before tax; None if NOT_FOUND"
     )
-    documentation_charges: float = Field(
-        default=0.0, ge=0, description="Legal, stamp duty, or documentation fees"
+    documentation_charges: Optional[float] = Field(
+        default=None, ge=0, description="Legal, stamp duty, or documentation fees; None if NOT_FOUND"
     )
-    bundled_insurance: float = Field(
-        default=0.0, ge=0, description="Credit shield, health or life insurance charged"
+    other_cash_recoveries: Optional[float] = Field(
+        default=None, ge=0, description="Other confirmed upfront cash recoveries before tax; None if NOT_FOUND"
+    )
+    bundled_insurance: Optional[float] = Field(
+        default=None, ge=0, description="Credit shield, health or life insurance charged; None if NOT_FOUND"
     )
     is_insurance_capitalized: bool = Field(
         default=False,
-        description="True if insurance was added into principal; False if deducted upfront from disbursal",
+        description="True if insurance was financed/added into principal; False if deducted upfront",
+    )
+    stated_gst_amount: Optional[float] = Field(
+        default=None, ge=0, description="Exact GST rupee amount ONLY if explicitly stated; None if UNKNOWN"
+    )
+    stated_gst_rate_pct: Optional[float] = Field(
+        default=None, ge=0, description="Exact GST % ONLY if explicitly stated in document; None if NOT_FOUND"
+    )
+    stated_net_disbursement: Optional[float] = Field(
+        default=None, ge=0, description="Exact final net disbursement amount ONLY if stated; None if UNKNOWN"
+    )
+    gst_status_note: Optional[str] = Field(
+        default=None, description="Verbatim tax wording if applicable tax is stated without amount"
     )
     prepayment_penalty_terms: Optional[str] = Field(
         default=None,
         description="Text clause detailing prepayment or foreclosure charges",
     )
-    has_prepayment_penalty: bool = Field(
-        default=False,
-        description="True if early foreclosure or part-prepayment incurs fees",
+    has_prepayment_penalty: Optional[bool] = Field(
+        default=None,
+        description="True if penalty applies, False if explicitly Nil, None if not disclosed",
+    )
+
+    # Multi-page granular charge & schedule tracking
+    charges: List[ExtractedCharge] = Field(
+        default_factory=list,
+        description="All extracted charges separated by confirmed_upfront, conditional, financed, third_party",
+    )
+    schedule_instalment_count: Optional[int] = Field(
+        default=None, ge=0, description="Number of instalments found in repayment schedule if present"
+    )
+    schedule_emis: List[float] = Field(
+        default_factory=list, description="Sample or full instalment amounts extracted from repayment schedule"
+    )
+
+    # Explicit field-level verification status and provenance
+    field_metadata: Dict[str, ExtractedFieldInfo] = Field(
+        default_factory=dict,
+        description="Verification status, source page, and evidence snippet per extracted field",
     )
     is_verified: bool = Field(
         default=True,
-        description="Whether core terms were extracted with certainty or flagged as missing",
+        description="Whether core terms were extracted with certainty",
     )
     missing_fields: List[str] = Field(
         default_factory=list,
-        description="List of core terms not detected in document (e.g. principal, rate, tenure)",
+        description="List of core terms not detected in document",
     )
     extraction_method: str = Field(
         default="openrouter_llm",
-        description="Method used for extraction (openrouter_llm or offline_heuristic_fallback)",
+        description="Method used for extraction",
     )
 
     @field_validator("interest_type", mode="before")
@@ -116,34 +200,52 @@ class ExtractedLoanTerms(BaseModel):
 
     @field_validator(
         "principal_amount",
+        "opening_financed_balance",
         "stated_interest_rate",
+        "stated_emi",
         "processing_fee",
         "documentation_charges",
+        "other_cash_recoveries",
         "bundled_insurance",
+        "stated_gst_amount",
+        "stated_gst_rate_pct",
+        "stated_net_disbursement",
         mode="before",
     )
     @classmethod
-    def clean_floats(cls, v):
-        if v is None:
-            return 0.0
-        if isinstance(v, (int, float)):
-            return float(v)
-        if isinstance(v, str):
-            cleaned = re.sub(r"[^\d.]", "", v)
-            return float(cleaned) if cleaned else 0.0
-        return float(v)
-
-    @field_validator("stated_emi", mode="before")
-    @classmethod
     def clean_optional_float(cls, v):
-        if v is None or v == "":
+        if v is None:
             return None
         if isinstance(v, (int, float)):
             return float(v)
         if isinstance(v, str):
+            s = v.strip().lower()
+            if s in ("", "null", "none", "unknown", "n/a", "na", "not found", "not_found"):
+                return None
             cleaned = re.sub(r"[^\d.]", "", v)
-            return float(cleaned) if cleaned else None
+            if not cleaned or cleaned == ".":
+                return None
+            return float(cleaned)
         return float(v)
+
+    @field_validator("tenure_months", "schedule_instalment_count", mode="before")
+    @classmethod
+    def clean_optional_int(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, bool):
+            return None
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            return int(v)
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if s in ("", "null", "none", "unknown", "n/a", "na", "not found", "not_found"):
+                return None
+            cleaned = re.sub(r"[^\d]", "", v)
+            return int(cleaned) if cleaned else None
+        return int(v)
 
 
 # =====================================================================
@@ -161,60 +263,81 @@ class DiscrepancyItem(BaseModel):
     title: str
     description: str
     impact_amount: Optional[float] = None
+    source_page: Optional[int] = None
+    evidence_snippet: Optional[str] = None
 
 
 class LoanAuditReport(BaseModel):
-    lender_name: Optional[str]
-    principal: float
-    tenure_months: int
-    stated_annual_rate: float
-    interest_type: InterestRateType
+    lender_name: Optional[str] = None
+    principal: Optional[float] = None
+    opening_financed_balance: Optional[float] = None
+    tenure_months: Optional[int] = None
+    stated_annual_rate: Optional[float] = None
+    interest_type: InterestRateType = InterestRateType.UNKNOWN
 
     # Deterministic EMI validation
-    stated_emi: Optional[float]
-    calculated_reducing_emi: float
-    calculated_flat_emi: float
-    emi_difference: float
-    is_emi_matching: bool
+    stated_emi: Optional[float] = None
+    calculated_reducing_emi: Optional[float] = None
+    calculated_flat_emi: Optional[float] = None
+    emi_difference: Optional[float] = None
+    is_emi_matching: Optional[bool] = None
 
-    # Fee and GST breakdown (18% Statutory Indian GST on Banking Services)
-    raw_processing_fee: float
-    raw_documentation_charges: float
-    fee_gst_amount: float
-    total_upfront_fees_incl_gst: float
-    bundled_insurance_amount: float
+    # Fee, recovery, insurance & tax breakdown (Never invented)
+    raw_processing_fee: Optional[float] = None
+    raw_documentation_charges: Optional[float] = None
+    other_cash_recoveries: Optional[float] = None
+    known_upfront_recoveries_excl_tax: Optional[float] = None
+    fee_gst_amount: Optional[float] = None
+    stated_gst_rate_pct: Optional[float] = None
+    gst_status_note: Optional[str] = None
+    total_upfront_fees_incl_gst: Optional[float] = None
+    bundled_insurance_amount: Optional[float] = None
+    is_insurance_capitalized: bool = False
+    conditional_charges_total: Optional[float] = None
+    third_party_charges_total: Optional[float] = None
 
-    # Cash flows and true cost
-    gross_loan_amount: float
-    net_disbursed_amount: float
-    total_repayment_amount: float
-    total_interest_payable: float
-    total_cost_of_borrowing: float  # (Total Repayment + Upfront Fees + GST) - Principal
+    # Cash flows and true cost (None / UNKNOWN if inputs are missing)
+    gross_loan_amount: Optional[float] = None
+    net_disbursed_amount: Optional[float] = None
+    total_repayment_amount: Optional[float] = None
+    total_interest_payable: Optional[float] = None
+    total_cost_of_borrowing: Optional[float] = None
 
-    # Deterministic True APR & IRR (None if non-computable, e.g. net disbursal <= 0)
+    # Deterministic True APR & IRR (None if required cash flows are unavailable)
     is_irr_computable: bool = Field(
-        default=True,
-        description="False if cash flows cannot yield meaningful IRR (e.g. net disbursal <= 0)",
+        default=False,
+        description="True only when net disbursement, EMI, and tenure are all verified and valid",
     )
     true_monthly_irr: Optional[float] = None
     nominal_apr: Optional[float] = None
     effective_annual_apr: Optional[float] = None
     rate_inflation_spread: Optional[float] = None
 
-    # Extraction verification metadata
+    # Evidence, verification & cross-validation
+    audit_status: str = Field(
+        default="VERIFIED",
+        description="VERIFIED | PARTIAL_MISSING_DATA | REJECTED_INVALID_COMBINATION",
+    )
     is_verified: bool = Field(
         default=True,
-        description="Whether core loan parameters were verified or flagged as missing",
+        description="Whether all core loan parameters were verified",
     )
-    missing_fields: List[str] = Field(
-        default_factory=list,
-        description="List of required loan parameters that were missing in extraction",
+    missing_fields: List[str] = Field(default_factory=list)
+    field_statuses: Dict[str, ExtractedFieldInfo] = Field(default_factory=dict)
+    charges_breakdown: List[ExtractedCharge] = Field(default_factory=list)
+    cross_validations: List[CrossValidationResult] = Field(default_factory=list)
+
+    # Negotiation gating
+    negotiation_script_blocked: bool = Field(
+        default=False,
+        description="True when critical financial fields are unverified/unknown or impossible combination rejected",
     )
+    negotiation_block_reason: Optional[str] = None
 
     # Flags & Findings
-    discrepancies: List[DiscrepancyItem] = []
-    rbi_compliance_score: int = Field(
-        ..., ge=0, le=100, description="Heuristic compliance score out of 100"
+    discrepancies: List[DiscrepancyItem] = Field(default_factory=list)
+    rbi_compliance_score: Optional[int] = Field(
+        default=None, ge=0, le=100, description="None unless explicitly computed without invented heuristics"
     )
 
     # Narrative explanation (populated by LLM explainer)
@@ -239,10 +362,10 @@ class RankedLoanItem(BaseModel):
     identifier: str
     lender_name: Optional[str]
     effective_annual_apr: Optional[float] = None
-    total_cost_of_borrowing: float
-    net_disbursed_amount: float
-    total_repayment_amount: float
-    cost_difference_vs_winner: float
+    total_cost_of_borrowing: Optional[float] = None
+    net_disbursed_amount: Optional[float] = None
+    total_repayment_amount: Optional[float] = None
+    cost_difference_vs_winner: Optional[float] = None
     key_takeaway: str
 
 

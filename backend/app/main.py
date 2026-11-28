@@ -170,8 +170,12 @@ async def audit_loan_document(
                 detail="Uploaded PDF file size exceeds the 25 MB limit.",
             )
 
-        raw_text = DocumentExtractor.extract_text_from_pdf_bytes(pdf_bytes, active_mistral_key)
-        if not raw_text.strip():
+        pages = DocumentExtractor.extract_pages_from_pdf_bytes(pdf_bytes, active_mistral_key)
+        raw_text = "\n\n".join(
+            p["text"] if p["text"].startswith("--- Page") else f"--- Page {p['page']} ---\n{p['text']}"
+            for p in pages
+        ).strip()
+        if not raw_text:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=(
@@ -187,10 +191,10 @@ async def audit_loan_document(
             detail=f"Error occurred while processing PDF text: {str(e)}",
         )
 
-    # 2. Flagship Zero-Hallucination Structured Extraction (STRICT: Zero math)
+    # 2. Flagship Zero-Hallucination Structured Extraction (STRICT: Zero math, Zero False Zeros)
     try:
         extracted_terms = await llm_service.extract_loan_parameters(
-            raw_text, custom_api_key=active_openrouter_key, model_name=model_name
+            raw_text, custom_api_key=active_openrouter_key, model_name=model_name, pages=pages
         )
     except Exception as e:
         raise HTTPException(
@@ -203,8 +207,7 @@ async def audit_loan_document(
     audit_result.extraction_method = extracted_terms.extraction_method
 
     # Multi-page extraction metadata & full multi-page preview
-    pages_found = set(re.findall(r"--- Page (\d+)", raw_text))
-    audit_result.total_pages_analyzed = len(pages_found) if pages_found else 1
+    audit_result.total_pages_analyzed = len(pages) if pages else 1
     sanitized_preview = mask_pii(raw_text[:60000])
     audit_result.raw_extracted_text_preview = sanitized_preview
 
@@ -291,9 +294,17 @@ def compare_loans(payload: LoanComparisonRequest):
         winner, loser = audit_b, audit_a
         winner_id, loser_id = "Offer B", "Offer A"
 
-    cost_diff = round(loser.total_cost_of_borrowing - winner.total_cost_of_borrowing, 2)
-    winner_apr_str = f"{winner.effective_annual_apr:.2f}%" if winner.effective_annual_apr is not None else "N/A"
-    loser_apr_str = f"{loser.effective_annual_apr:.2f}%" if loser.effective_annual_apr is not None else "N/A"
+    cost_diff: Optional[float] = None
+    if loser.total_cost_of_borrowing is not None and winner.total_cost_of_borrowing is not None:
+        cost_diff = round(loser.total_cost_of_borrowing - winner.total_cost_of_borrowing, 2)
+    elif loser.total_repayment_amount is not None and winner.total_repayment_amount is not None:
+        cost_diff = round(loser.total_repayment_amount - winner.total_repayment_amount, 2)
+
+    winner_apr_str = f"{winner.effective_annual_apr:.2f}%" if winner.effective_annual_apr is not None else "UNKNOWN"
+    loser_apr_str = f"{loser.effective_annual_apr:.2f}%" if loser.effective_annual_apr is not None else "UNKNOWN"
+    savings_str = f"₹{cost_diff:,.2f}" if cost_diff is not None else "UNKNOWN"
+    winner_net_str = f"₹{winner.net_disbursed_amount:,.2f}" if winner.net_disbursed_amount is not None else "UNKNOWN"
+    winner_cost_str = f"₹{winner.total_cost_of_borrowing:,.2f}" if winner.total_cost_of_borrowing is not None else "UNKNOWN"
 
     ranked_items.append(
         RankedLoanItem(
@@ -304,9 +315,9 @@ def compare_loans(payload: LoanComparisonRequest):
             total_cost_of_borrowing=winner.total_cost_of_borrowing,
             net_disbursed_amount=winner.net_disbursed_amount,
             total_repayment_amount=winner.total_repayment_amount,
-            cost_difference_vs_winner=0.0,
+            cost_difference_vs_winner=0.0 if cost_diff is not None else None,
             key_takeaway=(
-                f"Saves ₹{cost_diff:,.2f} in total borrowing costs. "
+                f"Saves {savings_str} in total borrowing costs. "
                 f"True APR is {winner_apr_str} vs {loser_apr_str}."
             ),
         )
@@ -323,7 +334,7 @@ def compare_loans(payload: LoanComparisonRequest):
             total_repayment_amount=loser.total_repayment_amount,
             cost_difference_vs_winner=cost_diff,
             key_takeaway=(
-                f"More expensive by ₹{cost_diff:,.2f}. Higher upfront deductions, hidden insurance, or inflated interest structure."
+                f"More expensive by {savings_str}. Higher upfront deductions, hidden insurance, or inflated interest structure."
             ),
         )
     )
@@ -331,8 +342,8 @@ def compare_loans(payload: LoanComparisonRequest):
     return LoanComparisonResponse(
         recommendation=(
             f"Choose {winner_id} ({winner.lender_name or 'Offer'}). "
-            f"It delivers ₹{winner.net_disbursed_amount:,.2f} in net disbursal with a total cost of ₹{winner.total_cost_of_borrowing:,.2f}, "
-            f"saving you ₹{cost_diff:,.2f} over the loan duration."
+            f"Net disbursal: {winner_net_str}; total borrowing cost: {winner_cost_str}; "
+            f"estimated savings: {savings_str}."
         ),
         ranked_loans=ranked_items,
     )

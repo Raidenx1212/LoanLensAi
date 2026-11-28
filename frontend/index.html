@@ -409,28 +409,28 @@
           <!-- Card 3: Upfront Fees & GST -->
           <div class="bg-white border border-slate-200 hover:border-slate-300 rounded-3xl p-5 shadow-xs relative overflow-hidden transition-all">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">Fees & 18% GST</span>
+              <span class="text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">Upfront Fees & Tax</span>
               <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
                 <i data-lucide="receipt" class="w-4 h-4"></i>
               </div>
             </div>
-            <div class="text-2xl font-extrabold text-slate-900" id="metric-fees-gst">₹0</div>
+            <div class="text-2xl font-extrabold text-slate-900" id="metric-fees-gst">UNKNOWN</div>
             <div class="mt-2 text-xs text-slate-500 flex items-center justify-between pt-2 border-t border-slate-100">
-              <span>18% GST: <strong id="metric-gst-only" class="text-indigo-600 font-mono">₹0</strong></span>
-              <span>Insurance: <strong id="metric-insurance" class="text-slate-800 font-mono">₹0</strong></span>
+              <span>GST: <strong id="metric-gst-only" class="text-indigo-600 font-mono">UNKNOWN</strong></span>
+              <span>Insurance: <strong id="metric-insurance" class="text-slate-800 font-mono">UNKNOWN</strong></span>
             </div>
           </div>
 
-          <!-- Card 4: RBI Compliance Score (Dark Accent Card for Visual Anchor) -->
+          <!-- Card 4: Verification & Cross-Check Status (Never invented scores) -->
           <div class="bg-[#0F172A] text-white border border-slate-800 rounded-3xl p-5 shadow-md relative overflow-hidden">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">RBI Fair Lending</span>
+              <span class="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Verification Status</span>
               <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
                 <i data-lucide="shield-check" class="w-4 h-4"></i>
               </div>
             </div>
-            <div class="text-2xl font-black text-emerald-400" id="metric-rbi-score">100 / 100</div>
-            <div class="mt-2 text-xs font-semibold text-slate-300 pt-2 border-t border-slate-800" id="metric-score-label">Fair lending compliant</div>
+            <div class="text-lg font-black text-emerald-400" id="metric-rbi-score">VERIFIED</div>
+            <div class="mt-2 text-xs font-semibold text-slate-300 pt-2 border-t border-slate-800" id="metric-score-label">Cross-validation complete</div>
           </div>
 
         </div>
@@ -465,7 +465,7 @@
             </div>
             
             <!-- Interactive Copy Negotiation Script Button -->
-            <button onclick="copyNegotiationScript()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center space-x-2 transition-all shadow-sm">
+            <button id="btn-copy-script" onclick="copyNegotiationScript()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center space-x-2 transition-all shadow-sm">
               <i data-lucide="copy" class="w-4 h-4 text-emerald-400"></i>
               <span id="btn-copy-script-text">Copy Script for WhatsApp / Email</span>
             </button>
@@ -1281,46 +1281,78 @@
       fullExtractedText = data.raw_extracted_text_preview || "No raw preview text available.";
       document.getElementById('raw-extracted-text-content').innerText = fullExtractedText;
 
-      // Metrics
-      document.getElementById('metric-net-disbursed').innerText = `₹${data.net_disbursed_amount.toLocaleString('en-IN')}`;
-      document.getElementById('metric-principal').innerText = `₹${data.principal.toLocaleString('en-IN')}`;
-      const deducted = data.principal - data.net_disbursed_amount;
-      document.getElementById('metric-deduction-badge').innerText = `-₹${deducted.toLocaleString('en-IN')} upfront`;
-
-      if (data.effective_annual_apr !== null && data.effective_annual_apr !== undefined) {
-        document.getElementById('metric-true-apr').innerText = `${data.effective_annual_apr.toFixed(2)}%`;
-        document.getElementById('metric-stated-rate').innerText = `${data.stated_annual_rate.toFixed(2)}%`;
-        document.getElementById('metric-apr-spread').innerText = `+${data.rate_inflation_spread.toFixed(2)}% spread`;
+      // Metrics (Never convert null/UNKNOWN into 0)
+      const fmtInr = (v) => (v !== null && v !== undefined) ? `₹${Number(v).toLocaleString('en-IN')}` : "UNKNOWN";
+      document.getElementById('metric-net-disbursed').innerText = fmtInr(data.net_disbursed_amount);
+      document.getElementById('metric-principal').innerText = fmtInr(data.principal);
+      if (data.principal !== null && data.principal !== undefined && data.net_disbursed_amount !== null && data.net_disbursed_amount !== undefined) {
+        const deducted = data.principal - data.net_disbursed_amount;
+        document.getElementById('metric-deduction-badge').innerText = `-₹${deducted.toLocaleString('en-IN')} upfront`;
       } else {
-        document.getElementById('metric-true-apr').innerText = "Non-computable";
-        document.getElementById('metric-stated-rate').innerText = `${data.stated_annual_rate.toFixed(2)}%`;
-        document.getElementById('metric-apr-spread').innerText = "Deductions >= Principal";
+        document.getElementById('metric-deduction-badge').innerText = "Disbursal UNKNOWN";
       }
 
-      document.getElementById('metric-fees-gst').innerText = `₹${data.total_upfront_fees_incl_gst.toLocaleString('en-IN')}`;
-      document.getElementById('metric-gst-only').innerText = `₹${data.fee_gst_amount.toLocaleString('en-IN')}`;
-      document.getElementById('metric-insurance').innerText = `₹${data.bundled_insurance_amount.toLocaleString('en-IN')}`;
+      const statedRateStr = (data.stated_annual_rate !== null && data.stated_annual_rate !== undefined) ? `${data.stated_annual_rate.toFixed(2)}%` : "UNKNOWN";
+      if (data.effective_annual_apr !== null && data.effective_annual_apr !== undefined) {
+        document.getElementById('metric-true-apr').innerText = `${data.effective_annual_apr.toFixed(2)}%`;
+        document.getElementById('metric-stated-rate').innerText = statedRateStr;
+        document.getElementById('metric-apr-spread').innerText = `+${(data.rate_inflation_spread ?? 0).toFixed(2)}% spread`;
+      } else {
+        document.getElementById('metric-true-apr').innerText = "UNKNOWN";
+        document.getElementById('metric-stated-rate').innerText = statedRateStr;
+        document.getElementById('metric-apr-spread').innerText = "Cash flows incomplete";
+      }
 
-      document.getElementById('metric-rbi-score').innerText = `${data.rbi_compliance_score} / 100`;
+      if (data.total_upfront_fees_incl_gst !== null && data.total_upfront_fees_incl_gst !== undefined) {
+        document.getElementById('metric-fees-gst').innerText = fmtInr(data.total_upfront_fees_incl_gst);
+      } else if (data.known_upfront_recoveries_excl_tax !== null && data.known_upfront_recoveries_excl_tax !== undefined) {
+        document.getElementById('metric-fees-gst').innerText = `${fmtInr(data.known_upfront_recoveries_excl_tax)} (excl. tax)`;
+      } else {
+        document.getElementById('metric-fees-gst').innerText = "UNKNOWN";
+      }
+      document.getElementById('metric-gst-only').innerText = fmtInr(data.fee_gst_amount);
+      if (data.bundled_insurance_amount !== null && data.bundled_insurance_amount !== undefined) {
+        document.getElementById('metric-insurance').innerText = `${fmtInr(data.bundled_insurance_amount)}${data.is_insurance_capitalized ? ' (Financed)' : ''}`;
+      } else {
+        document.getElementById('metric-insurance').innerText = "None / Not Stated";
+      }
+
+      const statusText = (data.audit_status || "VERIFIED").replace(/_/g, ' ');
+      document.getElementById('metric-rbi-score').innerText = statusText;
       const scoreLabel = document.getElementById('metric-score-label');
-      if (data.rbi_compliance_score >= 80) {
-        scoreLabel.innerText = "Fair lending compliant";
+      if (data.audit_status === 'VERIFIED') {
+        scoreLabel.innerText = "All core fields & cash flows verified";
         scoreLabel.className = "mt-2 text-xs text-emerald-400 font-bold";
-      } else if (data.rbi_compliance_score >= 60) {
-        scoreLabel.innerText = "Caution: high upfront fees";
+      } else if (data.audit_status === 'PARTIAL_MISSING_DATA') {
+        scoreLabel.innerText = "Partial audit: unverified/unknown fields present";
         scoreLabel.className = "mt-2 text-xs text-amber-400 font-bold";
       } else {
-        scoreLabel.innerText = "HIGH RISK: Predatory loan terms";
+        scoreLabel.innerText = "CONFLICT / REJECTED PARAMETERS";
         scoreLabel.className = "mt-2 text-xs text-rose-400 font-black";
       }
 
-      // Discrepancy list
+      // Negotiation script button gating
+      const copyBtn = document.getElementById('btn-copy-script');
+      const copyBtnText = document.getElementById('btn-copy-script-text');
+      if (copyBtn && copyBtnText) {
+        if (data.negotiation_script_blocked) {
+          copyBtn.disabled = true;
+          copyBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          copyBtnText.innerText = "Script Blocked (Unverified Fields)";
+        } else {
+          copyBtn.disabled = false;
+          copyBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          copyBtnText.innerText = "Copy Script for WhatsApp / Email";
+        }
+      }
+
+      // Discrepancy list (with source_page & evidence_snippet provenance)
       const discList = document.getElementById('discrepancy-list');
       discList.innerHTML = '';
       document.getElementById('discrepancy-count').innerText = `${data.discrepancies.length} Findings`;
 
       if (data.discrepancies.length === 0) {
-        discList.innerHTML = `<div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-bold">Clean Sanction Letter: No hidden deductions, flat-rate disguises, or regulatory violations detected.</div>`;
+        discList.innerHTML = `<div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-bold">Clean Sanction Letter: No hidden deductions, rate mismatches, or unverified discrepancies detected.</div>`;
       } else {
         data.discrepancies.forEach(d => {
           const isCritical = d.severity === 'critical';
@@ -1337,16 +1369,21 @@
             badgeStyle = "bg-amber-500 text-slate-950 border-amber-500 font-bold";
           }
 
+          const pageBadge = d.source_page ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">Page ${d.source_page}</span>` : '';
+          const evBlock = d.evidence_snippet ? `<div class="mt-2 text-[11px] font-mono text-slate-600 bg-white/70 border border-slate-200 rounded-lg px-2.5 py-1.5">Evidence: ${d.evidence_snippet}</div>` : '';
+
           const div = document.createElement('div');
           div.className = `p-4 rounded-2xl border ${cardStyle} transition-all shadow-xs`;
           div.innerHTML = `
             <div class="flex items-center justify-between mb-1.5">
               <h4 class="text-xs font-bold text-slate-900 flex items-center space-x-2">
                 <span>${d.title}</span>
+                ${pageBadge}
               </h4>
               <span class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${badgeStyle}">${d.severity}</span>
             </div>
             <p class="text-xs text-slate-700 leading-relaxed">${d.description}</p>
+            ${evBlock}
           `;
           discList.appendChild(div);
         });
@@ -1359,24 +1396,34 @@
       lucide.createIcons();
     }
 
-    // 1-Click Copy Negotiation Script for WhatsApp / Email
+    // 1-Click Copy Negotiation Script for WhatsApp / Email (Blocked when critical fields unverified)
     function copyNegotiationScript() {
       if (!lastAuditData) {
         showToast("No active audit report to copy yet.", true);
         return;
       }
+      if (lastAuditData.negotiation_script_blocked) {
+        showToast(lastAuditData.negotiation_block_reason || "Negotiation script blocked: critical financial fields remain unverified.", true);
+        return;
+      }
+
+      const aprVal = lastAuditData.effective_annual_apr !== null && lastAuditData.effective_annual_apr !== undefined
+        ? `${lastAuditData.effective_annual_apr.toFixed(2)}%` : "UNKNOWN";
+      const emiVal = lastAuditData.calculated_reducing_emi !== null && lastAuditData.calculated_reducing_emi !== undefined
+        ? `₹${lastAuditData.calculated_reducing_emi.toLocaleString('en-IN')}` : "UNKNOWN";
+      const feeVal = lastAuditData.total_upfront_fees_incl_gst !== null && lastAuditData.total_upfront_fees_incl_gst !== undefined
+        ? `₹${lastAuditData.total_upfront_fees_incl_gst.toLocaleString('en-IN')}` : "UNKNOWN";
       
       const scriptText = `🚨 LOANLENS FORENSIC AUDIT SUMMARY FOR LENDER:\n` +
         `• Lender: ${lastAuditData.lender_name || "Bank"}\n` +
-        `• Sanctioned Principal: ₹${lastAuditData.principal.toLocaleString('en-IN')}\n` +
+        `• Sanctioned Principal: ₹${(lastAuditData.principal ?? 0).toLocaleString('en-IN')}\n` +
         `• Stated ROI: ${lastAuditData.stated_annual_rate}%\n` +
-        `• True Effective APR (IRR): ${lastAuditData.effective_annual_apr.toFixed(2)}%\n` +
-        `• True Reducing EMI: ₹${lastAuditData.calculated_reducing_emi.toLocaleString('en-IN')}/mo\n` +
-        `• Total Upfront Fees & 18% GST: ₹${lastAuditData.total_upfront_fees_incl_gst.toLocaleString('en-IN')}\n\n` +
-        `NEGOTIATION SCRIPT TO BRANCH MANAGER:\n` +
-        `1. Our independent actuarial audit calculates the reducing EMI on ₹${lastAuditData.principal.toLocaleString('en-IN')} as ₹${lastAuditData.calculated_reducing_emi.toLocaleString('en-IN')}. Please align the sanction schedule before disbursal.\n` +
-        `2. As the True APR reaches ${lastAuditData.effective_annual_apr.toFixed(2)}%, please grant a minimum 50% waiver on processing fees.\n` +
-        `3. In accordance with RBI Circular RBI/2014-15/168, confirm in writing that floating rate prepayment penalty is 0%.`;
+        `• Effective Annual APR (IRR): ${aprVal}\n` +
+        `• Calculated Reducing EMI: ${emiVal}/mo\n` +
+        `• Confirmed Upfront Fees & Tax: ${feeVal}\n\n` +
+        `VERIFICATION QUESTIONS FOR LENDER:\n` +
+        `1. Our deterministic calculation yields a reducing EMI of ${emiVal}/mo. Please confirm alignment in the final repayment schedule.\n` +
+        `2. With all confirmed upfront deductions factored in, the Effective Annual APR is ${aprVal}. Please confirm an itemized breakdown of all fees and taxes in the Key Fact Statement.`;
 
       navigator.clipboard.writeText(scriptText).then(() => {
         const btnText = document.getElementById('btn-copy-script-text');
