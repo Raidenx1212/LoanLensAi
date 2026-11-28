@@ -536,8 +536,13 @@ class DeterministicLoanAuditor:
         elif principal is not None:
             gross_loan = round(principal + (financed_total or (bundled_ins if is_ins_cap and bundled_ins else 0.0)), 2)
 
-        # 5. Net Disbursed Amount (Never claim 0 without evidence; UNKNOWN if fees/GST missing)
-        upfront_insurance_deducted = 0.0 if is_ins_cap else (bundled_ins or 0.0)
+        # 5. Net Disbursed Amount (Never claim 0 without evidence; direct borrower payments not deducted from lender release)
+        is_direct_borrower_ins = any(
+            c.third_party_recovery_method == ThirdPartyRecoveryMethod.PAID_DIRECTLY_BY_BORROWER
+            and "insurance" in c.name.lower()
+            for c in charges
+        )
+        upfront_insurance_deducted = 0.0 if (is_ins_cap or is_direct_borrower_ins) else (bundled_ins or 0.0)
         net_disbursed: Optional[float] = None
         if loan.stated_net_disbursement is not None:
             net_disbursed = round(loan.stated_net_disbursement, 2)

@@ -447,6 +447,8 @@ class OpenRouterLLMService:
 
         if not llm_terms.gst_status_note and det_terms.gst_status_note:
             llm_terms.gst_status_note = det_terms.gst_status_note
+        elif det_terms.stated_gst_amount is not None and det_terms.gst_status_note:
+            llm_terms.gst_status_note = det_terms.gst_status_note
 
         if llm_terms.schedule_instalment_count is None and det_terms.schedule_instalment_count is not None:
             llm_terms.schedule_instalment_count = det_terms.schedule_instalment_count
@@ -1181,8 +1183,8 @@ class OpenRouterLLMService:
                                 extraction_confidence="HIGH",
                             )
 
-                # Unquantified applicable GST / indirect tax phrase
-                if gst_note is None:
+                # Unquantified applicable GST / indirect tax phrase (skip cap clauses like "upto 3% + applicable taxes")
+                if gst_note is None and not re.search(r"(?:upto|up\s*to)\s*\d+(?:\.\d+)?\s*%", line, re.IGNORECASE):
                     tax_m = re.search(
                         r"(?:(?:plus|exclusive\s*of|\+)\s*(?:applicable\s*)?(?:gst|indirect\s*tax|taxes?)|applicable\s*indirect\s*tax|at\s*prevailing\s*rate|tax(?:es)?\s*(?:is\s*)?(?:calculated\s*separately|additional)|not\s*included\s*in\s*the\s*percentage)",
                         line,
@@ -1194,6 +1196,50 @@ class OpenRouterLLMService:
                         gst_note_page = p_num
                         gst_note_sec = sec
                         gst_note_raw = raw_ev
+
+        # Reconcile when a document explicitly discloses BOTH a pre-tax % fee rule (e.g. "1.00% + Applicable taxes")
+        # AND an itemized rupee fee matching exact 18% GST gross-up (e.g. 45,000 -> 53,100), provided tax isn't withheld separately.
+        withholds_tax_or_disb = bool(
+            re.search(
+                r"calculated\s+separately\s+and\s+(?:is\s+)?not\s+included|final\s+disbursement\s+advice[^.]*will\s+evidence",
+                full_norm,
+                re.IGNORECASE,
+            )
+        )
+        if gst_amt is None and gst_rate is None and not withholds_tax_or_disb and principal is not None and principal > 0 and pf_val is not None:
+            for pct_rule_m in re.finditer(
+                r"(?:processing\s*(?:charges?|fees?)|origination\s*(?:charges?|fees?))[^\n%]{0,40}?\b(\d+(?:\.\d+)?)\s*%\s*\+?\s*(?:applicable\s*)?(?:gst|indirect\s*tax|taxes?)",
+                full_norm,
+                re.IGNORECASE,
+            ):
+                if re.search(r"(?:upto|up\s*to|max(?:imum)?)\s*\d", pct_rule_m.group(0), re.IGNORECASE):
+                    continue
+                pct_val = float(pct_rule_m.group(1))
+                base_fee = round((pct_val / 100.0) * principal, 2)
+                expected_gross = round(base_fee * 1.18, 2)
+                if base_fee > 0 and abs(pf_val - expected_gross) <= 5.0:
+                    reconciled_gst = round(pf_val - base_fee, 2)
+                    gst_amt = reconciled_gst
+                    gst_rate = 18.0
+                    gross_pf_val = pf_val
+                    pf_val = base_fee
+                    for ch in charges:
+                        if ch.category == ChargeCategory.CONFIRMED_UPFRONT and ("processing" in ch.name.lower() or "file handling" in ch.name.lower()):
+                            ch.amount = base_fee
+                            ch.gst_classification = GSTClassification.GST_AMOUNT_CONFIRMED
+                            ch.gst_related_service = ch.name
+                            ch.tax_note = f"Base ₹{base_fee:,.2f} ({pct_val:.2f}%) + ₹{reconciled_gst:,.2f} GST (18%) = ₹{gross_pf_val:,.2f} total"
+                            break
+                    gst_note = f"Reconciled from {pct_val:.2f}% base (₹{base_fee:,.2f}) vs ₹{gross_pf_val:,.2f} total processing fee (GST ₹{reconciled_gst:,.2f} @ 18%)"
+                    gst_info = ExtractedFieldInfo(
+                        status=FieldStatus.CONFIRMED,
+                        source_page=gst_note_page or 1,
+                        source_section=gst_note_sec or "Key Facility Particulars",
+                        evidence_snippet=gst_note,
+                        raw_text=gst_note_raw or gst_note,
+                        extraction_confidence="HIGH",
+                    )
+                    break
 
         if gst_amt is None and gst_rate is None and gst_note:
             gst_info = ExtractedFieldInfo(

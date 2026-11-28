@@ -226,10 +226,10 @@ def test_hero_housing_multipage_real_pdf():
     assert report.tenure_months == 134
     assert report.stated_emi == 56002.0
     assert report.is_emi_matching is True
-    assert report.raw_processing_fee == 53100.0
+    assert report.raw_processing_fee == pytest.approx(45000.0, abs=0.01)
     assert report.bundled_insurance_amount == 25000.0
     # Title Search Charges ("applicable only for Mumbai Metropolitan Region") classified CONDITIONAL, not mandatory upfront
-    assert report.known_upfront_recoveries_excl_tax == 53100.0
+    assert report.known_upfront_recoveries_excl_tax == pytest.approx(45000.0, abs=0.01)
     assert report.conditional_charges_total is None
     title_cond = next((c for c in report.conditional_charges if "title search" in c.name.lower()), None)
     assert title_cond is not None
@@ -252,14 +252,19 @@ def test_hero_housing_multipage_real_pdf():
     assert "26." not in (penal_cond.evidence_snippet or "")
     assert penal_cond.source_section == "GENERAL TERMS AND CONDITIONS"
 
-    # Customer-Funded Insurance surfaced in charge reconciliation and findings
+    # Customer-Funded Insurance surfaced in charge reconciliation and findings (NOT deducted from lender disbursal)
     assert any("insurance" in c.name.lower() and c.amount == 25000.0 for c in report.charges_breakdown)
     assert any(d.code == "BUNDLED_INSURANCE" and d.impact_amount == 25000.0 for d in report.discrepancies)
 
-    # Processing Charges states "1.00% + Applicable taxes" without explicit GST %, so GST & Net remain UNKNOWN
-    assert report.fee_gst_amount is None
-    assert report.net_disbursed_amount is None
-    assert report.is_irr_computable is False
+    # Processing Charges (1.00% = ₹45,000) reconciles cleanly with ₹53,100 (₹45,000 + ₹8,100 GST),
+    # unlocking Net Disbursement, True Effective APR, VERIFIED status, and Negotiation Script
+    assert report.fee_gst_amount == pytest.approx(8100.0, abs=0.01)
+    assert report.total_upfront_fees_incl_gst == pytest.approx(53100.0, abs=0.01)
+    assert report.net_disbursed_amount == pytest.approx(4500000.0 - 53100.0, abs=1.0)
+    assert report.is_irr_computable is True
+    assert report.effective_annual_apr is not None
+    assert report.audit_status == "VERIFIED"
+    assert report.negotiation_script_blocked is False
     assert report.rbi_compliance_score is None
 
 
