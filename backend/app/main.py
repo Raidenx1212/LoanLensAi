@@ -12,7 +12,7 @@ for p in [current_dir, backend_dir, root_dir]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status, Depends
+from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -45,10 +45,24 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def mask_pii(text: str) -> str:
+    """Masks sensitive borrower PII (PAN, phone, bank account, email) before persistence."""
+    if not text:
+        return text
+    # Mask Email
+    text = re.sub(r"\b([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Z|a-z]{2,})\b", r"\1***@\2", text)
+    # Mask Indian Phone (10 digits with optional prefix)
+    text = re.sub(r"(?:\+?91|0)?\s*([6-9]\d{2})\d{4}(\d{3})\b", r"+91 \1****\2", text)
+    # Mask PAN (5 uppercase letters, 4 digits, 1 uppercase letter)
+    text = re.sub(r"\b([A-Z]{3})[A-Z]{2}\d{4}([A-Z])\b", r"\1****\2", text)
+    # Mask Account Numbers (9 to 18 consecutive digits)
+    text = re.sub(r"\b(\d{2,4})\d{5,12}(\d{3})\b", r"\1******\2", text)
+    return text
 
 llm_service = OpenRouterLLMService()
 
@@ -131,7 +145,9 @@ async def audit_loan_document(
     language: Language = Form(default=Language.ENGLISH, description="Target language: en, hi, or kn"),
     openrouter_api_key: Optional[str] = Form(default=None, description="Optional OpenRouter API key"),
     mistral_api_key: Optional[str] = Form(default=None, description="Optional Mistral AI API key for Mistral OCR"),
-    model_name: Optional[str] = Form(default=None, description="Selected AI model (e.g. anthropic/claude-3.5-sonnet)"),
+    model_name: Optional[str] = Form(default=None, description="Selected AI model (e.g. google/gemini-2.5-flash)"),
+    x_openrouter_key: Optional[str] = Header(default=None, alias="X-OpenRouter-Key"),
+    x_mistral_key: Optional[str] = Header(default=None, alias="X-Mistral-Key"),
     db: Session = Depends(get_db),
 ):
     if not file.filename.lower().endswith(".pdf"):
@@ -140,12 +156,21 @@ async def audit_loan_document(
             detail="Only PDF documents are supported for loan auditing.",
         )
 
+    # Secure API key extraction: prefer custom request headers over body
+    active_openrouter_key = x_openrouter_key or openrouter_api_key
+    active_mistral_key = x_mistral_key or mistral_api_key
+
     # 1. High-Fidelity PDF & Table extraction using Mistral OCR or PyMuPDF
     try:
         pdf_bytes = await file.read()
-        raw_text = await asyncio.to_thread(
-            DocumentExtractor.extract_text_from_pdf_bytes, pdf_bytes, mistral_api_key
-        )
+        MAX_PDF_SIZE = 25 * 1024 * 1024  # 25 MB limit
+        if len(pdf_bytes) > MAX_PDF_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Uploaded PDF file size exceeds the 25 MB limit.",
+            )
+
+        raw_text = DocumentExtractor.extract_text_from_pdf_bytes(pdf_bytes, active_mistral_key)
         if not raw_text.strip():
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -165,7 +190,7 @@ async def audit_loan_document(
     # 2. Flagship Zero-Hallucination Structured Extraction (STRICT: Zero math)
     try:
         extracted_terms = await llm_service.extract_loan_parameters(
-            raw_text, custom_api_key=openrouter_api_key, model_name=model_name
+            raw_text, custom_api_key=active_openrouter_key, model_name=model_name
         )
     except Exception as e:
         raise HTTPException(
@@ -173,21 +198,22 @@ async def audit_loan_document(
             detail=f"Extraction model error: {str(e)}",
         )
 
-    # 3. Pure Deterministic Financial Audit (Python Math Engine - offloaded to thread)
-    audit_result = await asyncio.to_thread(DeterministicLoanAuditor.audit_loan, extracted_terms)
+    # 3. Pure Deterministic Financial Audit (Python Math Engine)
+    audit_result = DeterministicLoanAuditor.audit_loan(extracted_terms)
     audit_result.extraction_method = extracted_terms.extraction_method
 
     # Multi-page extraction metadata & full multi-page preview
     pages_found = set(re.findall(r"--- Page (\d+)", raw_text))
     audit_result.total_pages_analyzed = len(pages_found) if pages_found else 1
-    audit_result.raw_extracted_text_preview = raw_text[:60000]
+    sanitized_preview = mask_pii(raw_text[:60000])
+    audit_result.raw_extracted_text_preview = sanitized_preview
 
     # 4. Multilingual Consumer Explainer
     try:
         explanation = await llm_service.generate_multilingual_explanation(
             audit=audit_result,
             language=language,
-            custom_api_key=openrouter_api_key,
+            custom_api_key=active_openrouter_key,
             model_name=model_name,
         )
         audit_result.explanation = explanation
@@ -196,8 +222,12 @@ async def audit_loan_document(
             f"Audit completed successfully, but narrative explanation could not be generated: {str(e)}"
         )
 
-    # 5. Persist audit to Database
+    # 5. Persist sanitized audit to Database (PII masked)
     try:
+        sanitized_dump = audit_result.model_dump()
+        if sanitized_dump.get("raw_extracted_text_preview"):
+            sanitized_dump["raw_extracted_text_preview"] = sanitized_preview
+
         record = LoanAuditModel(
             lender_name=audit_result.lender_name,
             principal_amount=audit_result.principal,
@@ -207,7 +237,7 @@ async def audit_loan_document(
             net_disbursed_amount=audit_result.net_disbursed_amount,
             total_cost_of_borrowing=audit_result.total_cost_of_borrowing,
             rbi_compliance_score=audit_result.rbi_compliance_score,
-            audit_data=audit_result.model_dump(),
+            audit_data=sanitized_dump,
             explanation=audit_result.explanation,
         )
         db.add(record)
@@ -226,17 +256,17 @@ async def audit_loan_document(
 async def audit_manual_loan(
     payload: ExtractedLoanTerms,
     language: Language = Language.ENGLISH,
-    openrouter_api_key: Optional[str] = None,
+    x_openrouter_key: Optional[str] = Header(default=None, alias="X-OpenRouter-Key"),
     model_name: Optional[str] = None,
 ):
     """Directly audit structured loan terms without needing a PDF upload."""
-    audit_result = await asyncio.to_thread(DeterministicLoanAuditor.audit_loan, payload)
+    audit_result = DeterministicLoanAuditor.audit_loan(payload)
     audit_result.extraction_method = payload.extraction_method
     try:
         explanation = await llm_service.generate_multilingual_explanation(
             audit=audit_result,
             language=language,
-            custom_api_key=openrouter_api_key,
+            custom_api_key=x_openrouter_key,
             model_name=model_name,
         )
         audit_result.explanation = explanation
@@ -250,10 +280,8 @@ async def audit_manual_loan(
     response_model=LoanComparisonResponse,
     summary="Compare two loan offers and rank strictly by Total Cost of Borrowing",
 )
-async def compare_loans(payload: LoanComparisonRequest):
-    audit_a, audit_b, winner_idx = await asyncio.to_thread(
-        DeterministicLoanAuditor.compare_loans, payload.loan_a, payload.loan_b
-    )
+def compare_loans(payload: LoanComparisonRequest):
+    audit_a, audit_b, winner_idx = DeterministicLoanAuditor.compare_loans(payload.loan_a, payload.loan_b)
 
     ranked_items = []
     if winner_idx == 1:
@@ -264,6 +292,8 @@ async def compare_loans(payload: LoanComparisonRequest):
         winner_id, loser_id = "Offer B", "Offer A"
 
     cost_diff = round(loser.total_cost_of_borrowing - winner.total_cost_of_borrowing, 2)
+    winner_apr_str = f"{winner.effective_annual_apr:.2f}%" if winner.effective_annual_apr is not None else "N/A"
+    loser_apr_str = f"{loser.effective_annual_apr:.2f}%" if loser.effective_annual_apr is not None else "N/A"
 
     ranked_items.append(
         RankedLoanItem(
@@ -277,7 +307,7 @@ async def compare_loans(payload: LoanComparisonRequest):
             cost_difference_vs_winner=0.0,
             key_takeaway=(
                 f"Saves ₹{cost_diff:,.2f} in total borrowing costs. "
-                f"True APR is {winner.effective_annual_apr:.2f}% vs {loser.effective_annual_apr:.2f}%."
+                f"True APR is {winner_apr_str} vs {loser_apr_str}."
             ),
         )
     )

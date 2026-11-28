@@ -123,6 +123,6 @@ Open **[http://localhost:8000](http://localhost:8000)** in your browser.
 ---
 
 ## 📜 Regulatory References
-- **RBI Circular RBI/2014-15/168**: Strict prohibition on pre-payment/foreclosure penalties on floating-rate individual loans.
-- **RBI Key Fact Statement (KFS) Guidelines (April 2024)**: Mandatory disclosure of Total Cost of Borrowing and All-Inclusive APR.
+- **RBI Circulars DBOD.No.Dir.BC.107/13.03.00/2013-14 & DNBR (PD) CC.No.101/03.10.001/2019-20**: Strict prohibition on pre-payment/foreclosure penalties on floating-rate term loans to individual borrowers for purposes other than business.
+- **RBI Master Direction on Key Fact Statement (KFS) (RBI/2023-24/147 - April 2024)**: Mandatory harmonized disclosure of all-inclusive Annual Percentage Rate (APR), amortization schedules, and unbundling of ancillary charges across all banks and NBFCs.
 - **GST SAC 9971**: Statutory 18% Goods and Services Tax applicable to banking and loan processing fees in India.

@@ -1169,13 +1169,16 @@
       formData.append('file', selectedPdfFile);
       formData.append('language', currentLanguage);
 
+      const requestHeaders = {};
       const apiKey = getStoredApiKey();
       if (apiKey) {
+        requestHeaders['X-OpenRouter-Key'] = apiKey;
         formData.append('openrouter_api_key', apiKey);
       }
 
       const mistralKey = getStoredMistralKey();
       if (mistralKey) {
+        requestHeaders['X-Mistral-Key'] = mistralKey;
         formData.append('mistral_api_key', mistralKey);
       }
 
@@ -1188,6 +1191,7 @@
       try {
         const res = await fetch('/api/v1/audit', {
           method: 'POST',
+          headers: requestHeaders,
           body: formData,
         });
 
@@ -1223,14 +1227,18 @@
       };
 
       try {
-        const apiKeyParam = getStoredApiKey() ? `&openrouter_api_key=${encodeURIComponent(getStoredApiKey())}` : '';
+        const headers = { 'Content-Type': 'application/json' };
+        const apiKey = getStoredApiKey();
+        if (apiKey) {
+          headers['X-OpenRouter-Key'] = apiKey;
+        }
         const modelSelect = document.getElementById('select-ai-model');
         const chosenModel = modelSelect ? modelSelect.value : getStoredModel();
         const modelParam = chosenModel ? `&model_name=${encodeURIComponent(chosenModel)}` : '';
 
-        const res = await fetch(`/api/v1/audit/manual?language=${currentLanguage}${apiKeyParam}${modelParam}`, {
+        const res = await fetch(`/api/v1/audit/manual?language=${currentLanguage}${modelParam}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify(payload)
         });
         const data = await parseJsonResponse(res);
@@ -1279,9 +1287,15 @@
       const deducted = data.principal - data.net_disbursed_amount;
       document.getElementById('metric-deduction-badge').innerText = `-₹${deducted.toLocaleString('en-IN')} upfront`;
 
-      document.getElementById('metric-true-apr').innerText = `${data.effective_annual_apr.toFixed(2)}%`;
-      document.getElementById('metric-stated-rate').innerText = `${data.stated_annual_rate.toFixed(2)}%`;
-      document.getElementById('metric-apr-spread').innerText = `+${data.rate_inflation_spread.toFixed(2)}% spread`;
+      if (data.effective_annual_apr !== null && data.effective_annual_apr !== undefined) {
+        document.getElementById('metric-true-apr').innerText = `${data.effective_annual_apr.toFixed(2)}%`;
+        document.getElementById('metric-stated-rate').innerText = `${data.stated_annual_rate.toFixed(2)}%`;
+        document.getElementById('metric-apr-spread').innerText = `+${data.rate_inflation_spread.toFixed(2)}% spread`;
+      } else {
+        document.getElementById('metric-true-apr').innerText = "Non-computable";
+        document.getElementById('metric-stated-rate').innerText = `${data.stated_annual_rate.toFixed(2)}%`;
+        document.getElementById('metric-apr-spread').innerText = "Deductions >= Principal";
+      }
 
       document.getElementById('metric-fees-gst').innerText = `₹${data.total_upfront_fees_incl_gst.toLocaleString('en-IN')}`;
       document.getElementById('metric-gst-only').innerText = `₹${data.fee_gst_amount.toLocaleString('en-IN')}`;

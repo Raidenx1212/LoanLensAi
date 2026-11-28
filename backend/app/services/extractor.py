@@ -2,10 +2,13 @@ import io
 import re
 import gc
 import base64
+import logging
 from typing import Optional
 from PIL import Image
 import httpx
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 try:
     import pymupdf as fitz
@@ -64,8 +67,8 @@ class DocumentExtractor:
                 if markdown_pages:
                     return cls._clean_extracted_text("\n\n".join(markdown_pages))
         except Exception as e:
-            # If Mistral OCR fails (e.g. invalid key or network timeout), gracefully fall back
-            pass
+            # If Mistral OCR fails (e.g. invalid key or network timeout), gracefully log and fall back
+            logger.warning(f"Mistral OCR failed: {e}. Falling back to PyMuPDF native extraction.")
         return None
 
     @classmethod
@@ -83,85 +86,87 @@ class DocumentExtractor:
             )
 
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        total_pages = len(doc)
-        if total_pages == 0:
-            doc.close()
-            return ""
+        try:
+            total_pages = len(doc)
+            if total_pages == 0:
+                return ""
 
-        # =====================================================================
-        # PASS 1: Ultra-Fast Native Vector Text & Table Extraction (<20ms per page)
-        # =====================================================================
-        extracted_pages = []
-        for page_idx in range(total_pages):
-            page = doc[page_idx]
-            page_sections = []
+            # Cap pages to prevent resource exhaustion attacks
+            pages_to_extract = min(total_pages, 50)
 
-            # 1. Extract any structured vector tables with find_tables()
-            try:
-                tabs = page.find_tables()
-                if tabs.tables:
-                    for t_idx, tab in enumerate(tabs.tables):
-                        rows = tab.extract()
-                        if rows:
-                            table_lines = [f"\n--- Page {page_idx + 1} Structured Table {t_idx + 1} ---"]
-                            for row in rows:
-                                clean_row = [str(cell or "").replace("\n", " ").strip() for cell in row]
-                                if any(clean_row):
-                                    table_lines.append(" | ".join(clean_row))
-                            page_sections.append("\n".join(table_lines))
-            except Exception:
-                pass
-
-            # 2. Extract geometrically sorted text (top-to-bottom, left-to-right)
-            # sort=True prevents column interleaving and scrambled multi-column table cells
-            sorted_text = page.get_text("text", sort=True).strip()
-            if sorted_text:
-                page_sections.append(f"\n--- Page {page_idx + 1} Document Text ---\n{sorted_text}")
-
-            if page_sections:
-                extracted_pages.append("\n".join(page_sections))
-
-        combined_text = "\n\n".join(extracted_pages).strip()
-
-        # If document contains digital text (>= 50 chars), return immediately!
-        # Runs in 0.05 seconds, uses < 10 MB RAM, and never blocks the server.
-        if len(combined_text) >= 50:
-            doc.close()
-            return cls._clean_extracted_text(combined_text)
-
-        # =====================================================================
-        # PASS 2: Cloud-Optimized OCR (ONLY for camera photos / pure flat scans)
-        # =====================================================================
-        if pytesseract is not None:
-            ocr_pages = []
-            # On bank sanction letters, all key loan parameters are on Pages 1-2.
-            # Limiting to 2 pages avoids 60s CPU timeouts on cloud free tiers.
-            pages_to_ocr = min(total_pages, 2)
-
-            for page_idx in range(pages_to_ocr):
+            # =====================================================================
+            # PASS 1: Ultra-Fast Native Vector Text & Table Extraction (<20ms per page)
+            # =====================================================================
+            extracted_pages = []
+            for page_idx in range(pages_to_extract):
                 page = doc[page_idx]
-                try:
-                    # 120 DPI grayscale is ideal: low RAM usage + high OCR accuracy
-                    pix = page.get_pixmap(dpi=120)
-                    img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("L")
-                    text = pytesseract.image_to_string(img, config="--psm 6").strip()
-                    if text:
-                        ocr_pages.append(f"--- Page {page_idx + 1} (OCR) ---\n{text}")
+                page_sections = []
 
-                    # Explicitly free memory
-                    del pix
-                    del img
-                    gc.collect()
+                # 1. Extract any structured vector tables with find_tables()
+                try:
+                    tabs = page.find_tables()
+                    if tabs.tables:
+                        for t_idx, tab in enumerate(tabs.tables):
+                            rows = tab.extract()
+                            if rows:
+                                table_lines = [f"\n--- Page {page_idx + 1} Structured Table {t_idx + 1} ---"]
+                                for row in rows:
+                                    clean_row = [str(cell or "").replace("\n", " ").strip() for cell in row]
+                                    if any(clean_row):
+                                        table_lines.append(" | ".join(clean_row))
+                                page_sections.append("\n".join(table_lines))
                 except Exception:
                     pass
 
-            ocr_text = "\n\n".join(ocr_pages).strip()
-            if len(ocr_text) > 20:
-                doc.close()
-                return cls._clean_extracted_text(ocr_text)
+                # 2. Extract geometrically sorted text (top-to-bottom, left-to-right)
+                # sort=True prevents column interleaving and scrambled multi-column table cells
+                sorted_text = page.get_text("text", sort=True).strip()
+                if sorted_text:
+                    page_sections.append(f"\n--- Page {page_idx + 1} Document Text ---\n{sorted_text}")
 
-        doc.close()
-        return cls._clean_extracted_text(combined_text)
+                if page_sections:
+                    extracted_pages.append("\n".join(page_sections))
+
+            combined_text = "\n\n".join(extracted_pages).strip()
+
+            # If document contains digital text (>= 50 chars), return immediately!
+            # Runs in 0.05 seconds, uses < 10 MB RAM, and never blocks the server.
+            if len(combined_text) >= 50:
+                return cls._clean_extracted_text(combined_text)
+
+            # =====================================================================
+            # PASS 2: Cloud-Optimized OCR (ONLY for camera photos / pure flat scans)
+            # =====================================================================
+            if pytesseract is not None:
+                ocr_pages = []
+                # On bank sanction letters, all key loan parameters are on Pages 1-2.
+                # Limiting to 2 pages avoids 60s CPU timeouts on cloud free tiers.
+                pages_to_ocr = min(total_pages, 2)
+
+                for page_idx in range(pages_to_ocr):
+                    page = doc[page_idx]
+                    try:
+                        # 120 DPI grayscale is ideal: low RAM usage + high OCR accuracy
+                        pix = page.get_pixmap(dpi=120)
+                        img = Image.open(io.BytesIO(pix.tobytes("png"))).convert("L")
+                        text = pytesseract.image_to_string(img, config="--psm 6").strip()
+                        if text:
+                            ocr_pages.append(f"--- Page {page_idx + 1} (OCR) ---\n{text}")
+
+                        # Explicitly free memory
+                        del pix
+                        del img
+                        gc.collect()
+                    except Exception:
+                        pass
+
+                ocr_text = "\n\n".join(ocr_pages).strip()
+                if len(ocr_text) > 20:
+                    return cls._clean_extracted_text(ocr_text)
+
+            return cls._clean_extracted_text(combined_text)
+        finally:
+            doc.close()
 
     @staticmethod
     def _clean_extracted_text(text: str) -> str:

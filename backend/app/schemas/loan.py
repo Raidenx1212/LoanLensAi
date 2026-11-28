@@ -38,17 +38,17 @@ class ExtractedLoanTerms(BaseModel):
         default=LoanCategory.PERSONAL, description="Type of loan"
     )
     principal_amount: float = Field(
-        ..., gt=0, description="Sanctioned principal loan amount in INR"
+        default=0.0, ge=0, description="Sanctioned principal loan amount in INR"
     )
     stated_interest_rate: float = Field(
-        ..., ge=0, description="Annual nominal interest rate as stated (e.g. 10.5 for 10.5%)"
+        default=0.0, ge=0, description="Annual nominal interest rate as stated (e.g. 10.5 for 10.5%)"
     )
     interest_type: InterestRateType = Field(
-        default=InterestRateType.REDUCING,
-        description="Whether interest is calculated on reducing balance or flat balance",
+        default=InterestRateType.UNKNOWN,
+        description="Whether interest is calculated on reducing balance, flat balance, fixed, or floating",
     )
     tenure_months: int = Field(
-        ..., gt=0, description="Total loan tenure in calendar months"
+        default=0, ge=0, description="Total loan tenure in calendar months"
     )
     stated_emi: Optional[float] = Field(
         default=None, ge=0, description="Monthly EMI stated in sanction letter / KFS"
@@ -74,6 +74,14 @@ class ExtractedLoanTerms(BaseModel):
         default=False,
         description="True if early foreclosure or part-prepayment incurs fees",
     )
+    is_verified: bool = Field(
+        default=True,
+        description="Whether core terms were extracted with certainty or flagged as missing",
+    )
+    missing_fields: List[str] = Field(
+        default_factory=list,
+        description="List of core terms not detected in document (e.g. principal, rate, tenure)",
+    )
     extraction_method: str = Field(
         default="openrouter_llm",
         description="Method used for extraction (openrouter_llm or offline_heuristic_fallback)",
@@ -83,17 +91,17 @@ class ExtractedLoanTerms(BaseModel):
     @classmethod
     def normalize_interest_type(cls, v):
         if not v or not isinstance(v, str):
-            return InterestRateType.REDUCING
+            return InterestRateType.UNKNOWN
         v_lower = v.strip().lower()
         if "flat" in v_lower:
             return InterestRateType.FLAT
-        if "reduc" in v_lower:
-            return InterestRateType.REDUCING
         if "float" in v_lower:
             return InterestRateType.FLOATING
+        if "reduc" in v_lower:
+            return InterestRateType.REDUCING
         if "fix" in v_lower:
             return InterestRateType.FIXED
-        return InterestRateType.REDUCING
+        return InterestRateType.UNKNOWN
 
     @field_validator("loan_category", mode="before")
     @classmethod
@@ -183,11 +191,25 @@ class LoanAuditReport(BaseModel):
     total_interest_payable: float
     total_cost_of_borrowing: float  # (Total Repayment + Upfront Fees + GST) - Principal
 
-    # Deterministic True APR & IRR
-    true_monthly_irr: float
-    nominal_apr: float
-    effective_annual_apr: float
-    rate_inflation_spread: float
+    # Deterministic True APR & IRR (None if non-computable, e.g. net disbursal <= 0)
+    is_irr_computable: bool = Field(
+        default=True,
+        description="False if cash flows cannot yield meaningful IRR (e.g. net disbursal <= 0)",
+    )
+    true_monthly_irr: Optional[float] = None
+    nominal_apr: Optional[float] = None
+    effective_annual_apr: Optional[float] = None
+    rate_inflation_spread: Optional[float] = None
+
+    # Extraction verification metadata
+    is_verified: bool = Field(
+        default=True,
+        description="Whether core loan parameters were verified or flagged as missing",
+    )
+    missing_fields: List[str] = Field(
+        default_factory=list,
+        description="List of required loan parameters that were missing in extraction",
+    )
 
     # Flags & Findings
     discrepancies: List[DiscrepancyItem] = []
@@ -216,7 +238,7 @@ class RankedLoanItem(BaseModel):
     rank: int
     identifier: str
     lender_name: Optional[str]
-    effective_annual_apr: float
+    effective_annual_apr: Optional[float] = None
     total_cost_of_borrowing: float
     net_disbursed_amount: float
     total_repayment_amount: float

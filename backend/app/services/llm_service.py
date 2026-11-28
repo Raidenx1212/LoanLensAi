@@ -28,7 +28,6 @@ class OpenRouterLLMService:
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         self.api_key = api_key or settings.OPENROUTER_API_KEY
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
-        # Default to Gemini 2.5 Flash / GPT-4o for zero-hallucination structured extraction
         self.model = model or getattr(settings, "DEFAULT_LLM_MODEL", "google/gemini-2.5-flash")
 
     async def _call_openrouter(
@@ -60,7 +59,7 @@ class OpenRouterLLMService:
         if response_format:
             payload["response_format"] = response_format
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(45.0, connect=5.0)) as client:
             response = await client.post(self.base_url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
@@ -82,7 +81,7 @@ class OpenRouterLLMService:
         # If API key is missing or placeholder, use enhanced pattern-matching extraction fallback
         if not active_key or "your_openrouter" in active_key.lower():
             logger.warning(
-                "OPENROUTER_API_KEY is missing or placeholder. Using heuristic regex extraction fallback."
+                "OPENROUTER_API_KEY is missing or placeholder. Using heuristic pattern extraction fallback."
             )
             return self._heuristic_fallback_extraction(raw_document_text)
 
@@ -93,13 +92,14 @@ class OpenRouterLLMService:
             "CRITICAL ZERO-HALLUCINATION RULES:\n"
             "1. Extract ONLY values that are explicitly written in the provided text.\n"
             "2. NEVER guess, assume, calculate, or estimate numbers.\n"
-            "3. If a fee, insurance, or charge is NOT explicitly stated in the document, return 0.0.\n"
-            "4. If stated monthly EMI is not explicitly mentioned as an exact figure, return null.\n"
-            "5. Convert tenure to total calendar months (e.g., '3 Years' -> 36, '15 Years' -> 180).\n"
-            "6. Convert Indian denominations to numerical INR (e.g. '45 Lakhs' -> 4500000.0, '5 Lac' -> 500000.0, '1.5 Crore' -> 15000000.0).\n"
-            "7. Distinguish whether interest is stated as reducing balance or flat balance.\n"
-            "8. Check for any bundled credit-shield or life insurance mentioned in deductions.\n"
-            "9. Extract any early foreclosure/pre-payment penalty clause verbatim.\n\n"
+            "3. If a core term (principal, interest rate, tenure) cannot be found, set it to 0.0 or 0 and mark is_verified=false with missing_fields.\n"
+            "4. If a fee, insurance, or charge is NOT explicitly stated in the document, return 0.0.\n"
+            "5. If stated monthly EMI is not explicitly mentioned as an exact figure, return null.\n"
+            "6. Convert tenure to total calendar months (e.g., '3 Years' -> 36, '15 Years' -> 180).\n"
+            "7. Convert Indian denominations to numerical INR (e.g. '45 Lakhs' -> 4500000.0, '5 Lac' -> 500000.0, '1.5 Crore' -> 15000000.0).\n"
+            "8. Distinguish whether interest is stated as reducing balance, flat balance, floating, fixed, or unknown.\n"
+            "9. Check for any bundled credit-shield or life insurance mentioned in deductions.\n"
+            "10. Extract any early foreclosure/pre-payment penalty clause verbatim.\n\n"
             "Return ONLY a valid JSON object matching this schema:\n"
             "{\n"
             '  "lender_name": "string or null",\n'
@@ -114,7 +114,9 @@ class OpenRouterLLMService:
             '  "bundled_insurance": float,\n'
             '  "is_insurance_capitalized": bool,\n'
             '  "prepayment_penalty_terms": "string or null",\n'
-            '  "has_prepayment_penalty": bool\n'
+            '  "has_prepayment_penalty": bool,\n'
+            '  "is_verified": bool,\n'
+            '  "missing_fields": ["field1", ...]\n'
             "}"
         )
 
@@ -144,6 +146,19 @@ class OpenRouterLLMService:
             clean_json = json.loads(clean_str.strip())
             extracted = ExtractedLoanTerms(**clean_json)
             extracted.extraction_method = f"ai_model ({chosen_model})"
+
+            # Extra guard against silent zero/negative extraction without verification flags
+            missing = list(extracted.missing_fields)
+            if extracted.principal_amount <= 0 and "principal_amount" not in missing:
+                missing.append("principal_amount")
+            if extracted.stated_interest_rate <= 0 and "stated_interest_rate" not in missing:
+                missing.append("stated_interest_rate")
+            if extracted.tenure_months <= 0 and "tenure_months" not in missing:
+                missing.append("tenure_months")
+            if missing:
+                extracted.is_verified = False
+                extracted.missing_fields = missing
+
             return extracted
         except Exception as e:
             logger.error(f"OpenRouter extraction failed: {e}. Falling back to heuristic extractor.")
@@ -166,22 +181,29 @@ class OpenRouterLLMService:
         if not active_key or "your_openrouter" in active_key.lower():
             return self._local_template_explanation(audit, language)
 
+        apr_display = f"{audit.effective_annual_apr:.2f}%" if audit.effective_annual_apr is not None else "Non-computable"
+        spread_display = f"{audit.rate_inflation_spread:.2f}%" if audit.rate_inflation_spread is not None else "N/A"
+
         audit_summary_for_llm = {
             "lender": audit.lender_name,
             "principal": audit.principal,
             "stated_rate": f"{audit.stated_annual_rate}%",
-            "effective_annual_apr": f"{audit.effective_annual_apr}%",
-            "rate_spread": f"{audit.rate_inflation_spread}%",
+            "interest_type": str(audit.interest_type.value if hasattr(audit.interest_type, "value") else audit.interest_type),
+            "effective_annual_apr": apr_display,
+            "rate_spread": spread_display,
+            "is_irr_computable": audit.is_irr_computable,
             "stated_emi": audit.stated_emi,
             "calculated_reducing_emi": audit.calculated_reducing_emi,
+            "calculated_flat_emi": audit.calculated_flat_emi,
             "is_emi_matching": audit.is_emi_matching,
+            "emi_difference": audit.emi_difference,
             "net_disbursed_amount": audit.net_disbursed_amount,
             "fees_and_18_pct_gst": audit.total_upfront_fees_incl_gst,
             "bundled_insurance": audit.bundled_insurance_amount,
             "total_borrowing_cost": audit.total_cost_of_borrowing,
             "rbi_compliance_score": f"{audit.rbi_compliance_score}/100",
             "discrepancies": [
-                {"title": d.title, "description": d.description, "severity": d.severity}
+                {"code": d.code, "title": d.title, "description": d.description, "severity": d.severity}
                 for d in audit.discrepancies
             ],
         }
@@ -193,30 +215,31 @@ class OpenRouterLLMService:
         }
 
         system_prompt = (
-            "You are a Senior Finance Manager, Chief Credit Risk Officer, and Elite Indian Banking & Loan Auditor with 20+ years of institutional treasury, corporate finance, and retail lending oversight.\n"
-            "You are analyzing a 100% mathematically verified loan audit JSON on behalf of your client (the borrower).\n\n"
+            "You are an Elite Indian Banking & Loan Auditor and Chief Risk Officer analyzing a 100% mathematically verified loan audit JSON on behalf of the borrower.\n\n"
             "YOUR OBJECTIVE: Deliver a hard-hitting, sharp, executive-level financial analysis that dismantles deceptive bank terms, exposes mathematical traps, and arms the borrower with institutional-grade negotiation leverage.\n\n"
             "TONE & STYLE GUIDELINES:\n"
-            "- Speak with the uncompromising authority, forensic precision, and clinical sharpness of a Senior Director of Finance / Chief Financial Analyst protecting a high-value client.\n"
+            "- Speak with uncompromising authority, forensic precision, and clinical sharpness protecting the borrower.\n"
             "- Call out predatory spreads, hidden margin padding, and unfair deductions with exact rupee impact and basis points.\n"
-            "- Never sound timid or generic. Treat every rupee shaved off disbursal or padded into EMI as unacceptable leakages.\n"
-            "- Reference statutory guidelines and regulatory directives where applicable (e.g., RBI Fair Lending Guidelines, April 2024 Key Fact Statement (KFS) Directions, RBI Circular RBI/2014-15/168 on floating rate prepayment penalty prohibition, GST SAC 9971 on banking charges).\n\n"
+            "- Reference statutory guidelines and regulatory directives where applicable:\n"
+            "  * RBI Circulars DBOD.No.Dir.BC.107/13.03.00/2013-14 & DNBR (PD) CC.No.101/03.10.001/2019-20 prohibiting foreclosure charges on floating-rate individual retail loans.\n"
+            "  * RBI Master Direction on Key Fact Statement (KFS) (RBI/2023-24/147) mandating complete transparency, APR disclosure, and unbundling of insurance.\n"
+            "  * GST SAC 9971 on banking charges (18% statutory tax).\n\n"
             "STRICT RULES:\n"
             "1. NEVER alter, round differently, or recalculate the numbers. Use the EXACT figures provided in the verified audit JSON.\n"
             f"2. {lang_instructions.get(language, lang_instructions[Language.ENGLISH])}\n"
             "3. Structure your executive report into these 3 mandatory sections with Markdown headings:\n\n"
             "### 🚨 Executive Verdict & Treasury Reality Check\n"
-            "Provide an institutional-grade reality check contrasting the advertised nominal rate vs the True Effective APR. Detail the rate inflation spread in basis points/percentage, quantify the exact cash erosion between sanctioned principal and net in-hand cash, and state whether this loan represents acceptable market financing or aggressive lender rent-seeking.\n\n"
+            "Provide an institutional-grade reality check contrasting the advertised nominal rate vs the True Effective APR. Detail the rate inflation spread, quantify the exact cash erosion between sanctioned principal and net in-hand cash, and state whether this loan represents fair financing or aggressive lender rent-seeking.\n\n"
             "### 🔍 Forensic Breakdown of Hidden Charges & Traps\n"
-            "Examine the 3 primary friction points:\n"
+            "Examine key friction points:\n"
             "- **Statutory 18% GST (SAC 9971)**: Dissect upfront processing and documentation fees + GST impact on capital efficiency.\n"
-            "- **Bundled Insurance & Ancillary Fees**: Evaluate credit shield/life covers. If bundled, flag that RBI mandates insurance cannot be made a mandatory tie-in condition for sanction.\n"
-            "- **Amortization & EMI Anomalies**: Compare stated EMI vs true reducing EMI. If there is a variance, calculate the cumulative lifetime loss over the full tenure (e.g., ₹X/month × N months = ₹Total Rupee Drainage).\n\n"
+            "- **Bundled Insurance & Ancillary Fees**: Evaluate credit shield/life covers. If bundled/capitalized, flag that RBI mandates insurance cannot be made a mandatory tie-in condition for sanction.\n"
+            "- **Amortization & EMI Anomalies**: Compare stated EMI vs true standard EMI. If there is a variance, detail the cumulative lifetime impact.\n\n"
             "### 📋 Institutional Negotiation Playbook for the Borrower\n"
-            "Provide exactly 3 uncompromising, executive-level scripts for the borrower to demand from the Bank Branch Manager or Chief Credit Underwriter:\n"
-            "1. **EMI Restructuring Demand**: An aggressive, mathematically armed question demanding immediate downward adjustment to true reducing amortization.\n"
+            "Provide exactly 3 uncompromising, executive-level scripts for the borrower to demand from the Bank Branch Manager:\n"
+            "1. **EMI Restructuring Demand**: A mathematically armed question demanding immediate downward adjustment to true standard amortization.\n"
             "2. **Upfront Fee & GST Clawback**: Script to demand a 50% to 100% processing fee waiver and recalculation of net in-hand disbursal.\n"
-            "3. **Regulatory Non-Compliance & RBI Foreclosure Guarantee**: Formal demand invoking RBI Circular RBI/2014-15/168 (or KFS transparency norms) for written certification of zero penalty on prepayment and unbundling of any ancillary insurance.\n"
+            "3. **Regulatory Non-Compliance & RBI Foreclosure Guarantee**: Formal demand invoking RBI Circulars DBOD.No.Dir.BC.107/13.03.00/2013-14 and KFS norms for written certification of zero penalty on prepayment and unbundling of any ancillary insurance.\n"
         )
 
         user_content = f"Verified Deterministic Audit Data:\n```json\n{json.dumps(audit_summary_for_llm, indent=2)}\n```"
@@ -239,13 +262,18 @@ class OpenRouterLLMService:
             return self._local_template_explanation(audit, language)
 
     def _heuristic_fallback_extraction(self, text: str) -> ExtractedLoanTerms:
-        """Robust multi-pass tabular and pattern-matching extractor for Indian banking documents."""
+        """
+        Multi-pass regex extractor for Indian banking documents.
+        Zero Hallucination Guarantee: Never invents numbers if not found in text.
+        """
         norm = re.sub(r"[\u20B9₹`]|Rs\.?|INR", "INR ", text)
         # Fix OCR spaced numbers in Indian denominations e.g. "45 ,00 ,000" -> "45,00,000"
         norm = re.sub(r"(\d+)\s*,\s*(\d+)", r"\1,\2", norm)
         norm = re.sub(r"(\d+)\s*,\s*(\d+)", r"\1,\2", norm)
         # Fix OCR spaced decimals e.g. "10 .05" -> "10.05"
         norm = re.sub(r"(\d+)\s*\.\s*(\d+)", r"\1.\2", norm)
+
+        missing_fields = []
 
         # 1. Lender Name Detection
         lender = "Indian Financial Institution"
@@ -270,10 +298,9 @@ class OpenRouterLLMService:
             category = LoanCategory.EDUCATION
 
         # 3. Principal Amount Detection (High-Precision Multi-Pass)
-        principal = 500000.0
+        principal = 0.0
         found_p = None
 
-        # Pass A: Explicit table headers or sanction statements
         p_patterns = [
             r"(?:loan\s*amount\s*approved|sanctioned\s*(?:loan\s*)?amount|approved\s*(?:loan\s*)?amount|facility\s*amount)[\s\S]{0,120}?(?:INR\s*)?([1-9][\d,]{5,}(?:\.\d+)?)",
             r"(?:loan\s*amount|principal)[\s\S]{0,60}?(?:INR\s*)?([1-9][\d,]{5,}(?:\.\d+)?)",
@@ -283,11 +310,10 @@ class OpenRouterLLMService:
             m = re.search(pat, norm, re.IGNORECASE)
             if m:
                 val = float(m.group(1).replace(",", ""))
-                if val >= 50000.0:
+                if val >= 10000.0:
                     found_p = val
                     break
 
-        # Pass B: Word-based Indian denomination parsing e.g. "Forty Five Lakh" -> 45,00,000
         if not found_p:
             words_num_map = {
                 "forty five": 45, "fifty five": 55, "sixty five": 65, "seventy five": 75,
@@ -306,9 +332,11 @@ class OpenRouterLLMService:
 
         if found_p:
             principal = found_p
+        else:
+            missing_fields.append("principal_amount")
 
         # 4. Rate of Interest (ROI) & Type
-        rate = 10.05 if "Hero Housing" in lender else 10.5
+        rate = 0.0
         roi_match = re.search(
             r"(?:Rate\s*Of\s*Interest|ROI|applicable\s*rate)[\s\S]{0,80}?([\d]{1,2}(?:\.[\d]+)?)\s*%",
             norm,
@@ -316,15 +344,21 @@ class OpenRouterLLMService:
         )
         if roi_match:
             rate = float(roi_match.group(1))
+        else:
+            missing_fields.append("stated_interest_rate")
 
-        int_type = InterestRateType.REDUCING
+        int_type = InterestRateType.UNKNOWN
         if re.search(r"Rate\s*of\s*Interest\s*\(ROI\)\s*Type[\s\S]{0,50}?\bfloating\b|\bfloating\s*(?:rate|reducing)?\b", norm, re.IGNORECASE):
             int_type = InterestRateType.FLOATING
         elif re.search(r"\bflat\s*(?:rate|interest)?\b", norm, re.IGNORECASE):
             int_type = InterestRateType.FLAT
+        elif re.search(r"\breducing\s*(?:rate|balance)?\b", norm, re.IGNORECASE):
+            int_type = InterestRateType.REDUCING
+        elif re.search(r"\bfixed\s*(?:rate)?\b", norm, re.IGNORECASE):
+            int_type = InterestRateType.FIXED
 
         # 5. Tenure Detection (Months)
-        tenure = 120
+        tenure = 0
         tenor_match = re.search(r"Tenor\s*\(in\s*Months\)[\s\S]{0,60}?\b(\d{2,3})\b", norm, re.IGNORECASE)
         if not tenor_match:
             tenor_match = re.search(r"(?:tenure|tenor|term)[\s\S]{0,50}?\b(\d{2,3})\s*(?:months|mths|m)\b", norm, re.IGNORECASE)
@@ -335,6 +369,9 @@ class OpenRouterLLMService:
         if tenor_match:
             tenure = int(tenor_match.group(1))
 
+        if tenure <= 0:
+            missing_fields.append("tenure_months")
+
         # 6. Stated Monthly EMI
         emi = None
         emi_match = re.search(
@@ -344,8 +381,7 @@ class OpenRouterLLMService:
         )
         if emi_match:
             emi_val = float(emi_match.group(1).replace(",", ""))
-            # Stated EMI must be strictly less than the total principal
-            if emi_val < principal:
+            if principal == 0.0 or emi_val < principal:
                 emi = emi_val
 
         # 7. Processing Fee Detection
@@ -358,7 +394,7 @@ class OpenRouterLLMService:
         if pf_matches:
             pf_vals = [float(p.replace(",", "")) for p in pf_matches]
             pf = max(pf_vals)
-        else:
+        elif principal > 0:
             pct_m = re.search(r"Processing\s*Charges[\s\S]{0,40}?([\d]+(?:\.[\d]+)?)\s*%", norm, re.IGNORECASE)
             if pct_m:
                 pf = round((float(pct_m.group(1)) / 100.0) * principal, 2)
@@ -383,7 +419,7 @@ class OpenRouterLLMService:
         if ins_match:
             insurance = float(ins_match.group(1).replace(",", ""))
 
-        # 9. Foreclosure / Prepayment Penalty
+        # 10. Foreclosure / Prepayment Penalty
         has_penalty = False
         penalty_terms = None
         if re.search(r"housing\s+loan[^\n]*floating\s*rate[^\n]*Nil|at\s+floating\s+rate\s*:\s*Nil|prepayment[^\n]*:\s*Nil", norm, re.IGNORECASE):
@@ -392,6 +428,8 @@ class OpenRouterLLMService:
         elif re.search(r"(?:prepayment\s+penalty|foreclosure\s+charge)[\s\S]{0,60}?([1-9](?:\.[\d]+)?\s*%)", norm, re.IGNORECASE):
             has_penalty = True
             penalty_terms = "Prepayment penalty clause detected"
+
+        is_verified = len(missing_fields) == 0
 
         return ExtractedLoanTerms(
             lender_name=lender,
@@ -402,27 +440,32 @@ class OpenRouterLLMService:
             tenure_months=tenure,
             stated_emi=emi,
             processing_fee=pf,
-            documentation_charges=0.0,
+            documentation_charges=doc_charges,
             bundled_insurance=insurance,
             is_insurance_capitalized=False,
             prepayment_penalty_terms=penalty_terms,
             has_prepayment_penalty=has_penalty,
+            is_verified=is_verified,
+            missing_fields=missing_fields,
             extraction_method="offline_heuristic_fallback",
         )
 
     def _local_template_explanation(self, audit: LoanAuditReport, language: Language) -> str:
-        """Deterministic Senior Finance Manager executive audit report fallback."""
+        """Deterministic executive audit report fallback with verified statutory citations."""
         emi_diff = (audit.stated_emi or 0) - audit.calculated_reducing_emi
         lifetime_emi_loss = emi_diff * audit.tenure_months if emi_diff > 1 else 0
+
+        apr_str = f"{audit.effective_annual_apr:.2f}%" if audit.effective_annual_apr is not None else "Non-computable"
+        spread_str = f"+{audit.rate_inflation_spread:.2f}%" if audit.rate_inflation_spread is not None else "N/A"
 
         if language == Language.HINDI:
             return (
                 f"### 🚨 आधिकारिक ऋण विश्लेषण निष्कर्ष (LoanLens Forensic Audit)\n\n"
-                f"कथित ब्याज दर **{audit.stated_annual_rate}%** के मुकाबले आपकी वास्तविक वार्षिक लागत (**True Effective APR**) **{audit.effective_annual_apr}%** है। "
-                f"यह **+{audit.rate_inflation_spread}%** का स्प्रेड बैंक द्वारा छिपाए गए मार्जिन को दर्शाता है।\n\n"
+                f"कथित ब्याज दर **{audit.stated_annual_rate}%** के मुकाबले आपकी वास्तविक वार्षिक लागत (**True Effective APR**) **{apr_str}** है। "
+                f"यह **{spread_str}** का स्प्रेड बैंक द्वारा छिपाए गए मार्जिन को दर्शाता है।\n\n"
                 f"- **स्वीकृत ऋण राशि**: ₹{audit.principal:,.2f}\n"
                 f"- **खाते में शुद्ध प्राप्त राशि (Net Disbursed)**: ₹{audit.net_disbursed_amount:,.2f} "
-                f"(₹{audit.principal - audit.net_disbursed_amount:,.2f} की सीधी कटौती)\n"
+                f"(₹{audit.principal - audit.net_disbursed_amount:,.2f} की अग्रिम कटौती)\n"
                 f"- **ऋण की कुल वास्तविक लागत**: ₹{audit.total_cost_of_borrowing:,.2f}\n"
                 f"- **RBI अनुपालन रेटिंग**: **{audit.rbi_compliance_score}/100**\n\n"
                 f"### 🔍 फोरेंसिक शुल्क विश्लेषण एवं वित्तीय विसंगतियां (Forensic Breakdown)\n\n"
@@ -433,14 +476,14 @@ class OpenRouterLLMService:
                    f"{audit.tenure_months} महीनों में यह कुल **₹{lifetime_emi_loss:,.2f} का अतिरिक्त वित्तीय नुकसान** है।\n\n" if emi_diff > 5 else "- **EMI मिलान**: स्वीकृत EMI रिड्यूसिंग बैलेंस फॉर्मूले से मेल खाती है।\n\n") +
                 f"### 📋 बैंक शाखा प्रबंधक के समक्ष वार्ता रणनीति (Negotiation Playbook)\n\n"
                 f"1. **EMI संशोधन की मांग**: \"बैंक की ₹{audit.stated_emi or audit.calculated_reducing_emi:,.2f} की EMI वास्तविक रिड्यूसिंग बैलेंस गणना (₹{audit.calculated_reducing_emi:,.2f}) से मेल नहीं खाती। कृपया इसे तुरंत संशोधित करें।\"\n"
-                f"2. **प्रोसेसिंग फीस में छूट की मांग**: \"ऋण की वास्तविक APR {audit.effective_annual_apr}% तक पहुंच रही है। ₹{audit.total_upfront_fees_incl_gst:,.2f} के अग्रिम शुल्क पर 50% से 100% की छूट प्रदान करें।\"\n"
-                f"3. **RBI सर्कुलर RBI/2014-15/168 का अनुपालन**: \"फ्लोटिंग रेट व्यक्तिगत ऋण पर प्रीपेमेंट या फोरक्लोजर पेनल्टी लगाना आरबीआई नियमों का उल्लंघन है। मुझे लिखित में शून्य पेनल्टी की पुष्टि दें।\""
+                f"2. **प्रोसेसिंग फीस में छूट की मांग**: \"ऋण की वास्तविक APR {apr_str} तक पहुंच रही है। ₹{audit.total_upfront_fees_incl_gst:,.2f} के अग्रिम शुल्क पर 50% से 100% की छूट प्रदान करें।\"\n"
+                f"3. **RBI मास्टर परिपत्र (DBOD.No.Dir.BC.107/13.03.00/2013-14) का अनुपालन**: \"फ्लोटिंग रेट व्यक्तिगत ऋण पर प्रीपेमेंट या फोरक्लोजर पेनल्टी लगाना आरबीआई नियमों का उल्लंघन है। मुझे लिखित में शून्य पेनल्टी की पुष्टि दें।\""
             )
         elif language == Language.KANNADA:
             return (
                 f"### 🚨 ಅಧಿಕೃತ ಸಾಲ ವಿಧಿವಿಜ್ಞಾನ ವರದಿ (LoanLens Forensic Audit)\n\n"
-                f"ಬ್ಯಾಂಕ್ ಘೋಷಿಸಿದ ಬಡ್ಡಿದರ **{audit.stated_annual_rate}%** ಆಗಿದ್ದರೂ, ನಿಮ್ಮ ನೈಜ ಪರಿಣಾಮಕಾರಿ ವಾರ್ಷಿಕ ಬಡ್ಡಿದರ (**True Effective APR**) **{audit.effective_annual_apr}%** ಆಗಿದೆ. "
-                f"ಇದು **+{audit.rate_inflation_spread}%** ನಷ್ಟು ದರ ಹಣದುಬ್ಬರವನ್ನು ತೋರಿಸುತ್ತದೆ.\n\n"
+                f"ಬ್ಯಾಂಕ್ ಘೋಷಿಸಿದ ಬಡ್ಡಿದರ **{audit.stated_annual_rate}%** ಆಗಿದ್ದರೂ, ನಿಮ್ಮ ನೈಜ ಪರಿಣಾಮಕಾರಿ ವಾರ್ಷಿಕ ಬಡ್ಡಿದರ (**True Effective APR**) **{apr_str}** ಆಗಿದೆ. "
+                f"ಇದು **{spread_str}** ನಷ್ಟು ದರ ಹಣದುಬ್ಬರವನ್ನು ತೋರಿಸುತ್ತದೆ.\n\n"
                 f"- **ಮಂಜೂರಾದ ಒಟ್ಟು ಸಾಲ**: ₹{audit.principal:,.2f}\n"
                 f"- **ನಿಮ್ಮ ಕೈಸೇರುವ ನಿವ್ವಳ ಮೊತ್ತ (Net Disbursed)**: ₹{audit.net_disbursed_amount:,.2f} (ಕಡಿತ: ₹{audit.principal - audit.net_disbursed_amount:,.2f})\n"
                 f"- **ಸಾಲದ ಒಟ್ಟು ನೈಜ ಮರುಪಾವತಿ ವೆಚ್ಚ**: ₹{audit.total_cost_of_borrowing:,.2f}\n"
@@ -452,25 +495,25 @@ class OpenRouterLLMService:
                 f"### 📋 ಬ್ಯಾಂಕ್ ಮ್ಯಾನೇಜರ್ ಅವರೊಂದಿಗೆ ಮಾತುಕತೆಯ ಕಾರ್ಯತಂತ್ರ (Negotiation Playbook)\n\n"
                 f"1. **EMI ಮರುಲೆಕ್ಕಾಚಾರ**: \"ನೈಜ ರಿಡ್ಯೂಸಿಂಗ್ ಲೆಕ್ಕದ ಪ್ರಕಾರ ₹{audit.calculated_reducing_emi:,.2f} ಆಗಬೇಕಿರುವ EMI ಅನ್ನು ಸರಿಪಡಿಸಿ.\"\n"
                 f"2. **ಪ್ರೊಸೆಸಿಂಗ್ ಶುಲ್ಕ ಮನ್ನಾ**: \"ಒಟ್ಟು ವೆಚ್ಚ ಕಡಿಮೆ ಮಾಡಲು ₹{audit.total_upfront_fees_incl_gst:,.2f} ಶುಲ್ಕದಲ್ಲಿ ಕನಿಷ್ಠ 50% ರಿಯಾಯಿತಿ ನೀಡಿ.\"\n"
-                f"3. **ಆರ್‌ಬಿಐ ಸುತ್ತೋಲೆ RBI/2014-15/168 ಖಾತರಿ**: \"ಫ್ಲೋಟಿಂಗ್ ದರದ ಸಾಲಕ್ಕೆ ಯಾವುದೇ ಮುಂಚಿತ ತೀರುವಳಿ ಶುಲ್ಕ ಇರುವುದಿಲ್ಲ ಎಂದು ಲಿಖಿತ ಭರವಸೆ ನೀಡಿ.\""
+                f"3. **ಆರ್‌ಬಿಐ ಸುತ್ತೋಲೆ DBOD.No.Dir.BC.107/13.03.00/2013-14 ಖಾತರಿ**: \"ಫ್ಲೋಟಿಂಗ್ ದರದ ಸಾಲಕ್ಕೆ ಯಾವುದೇ ಮುಂಚಿತ ತೀರುವಳಿ ಶುಲ್ಕ ಇರುವುದಿಲ್ಲ ಎಂದು ಲಿಖಿತ ಭರವಸೆ ನೀಡಿ.\""
             )
         else:
             return (
                 f"### 🚨 Executive Audit Verdict & Reality Check\n\n"
-                f"Based on our verified financial audit and forensic risk analysis, the numbers indicate a significant divergence from the headline offer. "
-                f"While the bank marketed an annual interest rate of **{audit.stated_annual_rate:.2f}%**, your **True Effective APR (via Newton-Raphson IRR) is {audit.effective_annual_apr:.2f}%**. "
-                f"This represents an aggressive **+{audit.rate_inflation_spread:.2f}% rate spread padding** in the lender's favor.\n\n"
+                f"Based on our deterministic financial audit and forensic risk analysis, the numbers indicate a significant divergence from the headline offer. "
+                f"While the bank marketed an annual interest rate of **{audit.stated_annual_rate:.2f}%**, your **True Effective APR is {apr_str}**. "
+                f"This represents an aggressive **{spread_str} rate spread padding** in the lender's favor.\n\n"
                 f"- **Sanctioned Facility Amount**: ₹{audit.principal:,.2f}\n"
                 f"- **Net Capital Realized (In-Hand Cash)**: **₹{audit.net_disbursed_amount:,.2f}** (Immediate cash leakage of ₹{audit.principal - audit.net_disbursed_amount:,.2f})\n"
                 f"- **Total Lifetime Borrowing Cost**: ₹{audit.total_cost_of_borrowing:,.2f}\n"
                 f"- **Institutional RBI Compliance Score**: **{audit.rbi_compliance_score} / 100**\n\n"
                 f"### 🔍 Forensic Breakdown of Hidden Charges & Traps\n\n"
-                f"- **18% Statutory GST (SAC 9971)**: The lender levies ₹{audit.raw_processing_fee + audit.raw_documentation_charges:,.2f} in origination charges, attracting ₹{audit.fee_gst_amount:,.2f} in GST. This immediately reduces your working capital at day zero.\n"
-                f"- **Bundled Insurance Policy**: ₹{audit.bundled_insurance_amount:,.2f} deducted upfront. *Regulatory note*: Under RBI fair-practice directives, credit-life insurance cannot be legally mandated as a pre-condition for loan sanction.\n"
+                f"- **18% Statutory GST (SAC 9971)**: The lender levies ₹{audit.raw_processing_fee + audit.raw_documentation_charges:,.2f} in origination charges, attracting ₹{audit.fee_gst_amount:,.2f} in statutory GST. This immediately reduces your working capital at day zero.\n"
+                f"- **Bundled Insurance Policy**: ₹{audit.bundled_insurance_amount:,.2f} deducted upfront or capitalized. *Regulatory note*: Under RBI fair-practice directives, credit-life insurance cannot be legally mandated as a pre-condition for loan sanction.\n"
                 + (f"- **EMI Amortization Discrepancy**: The sanctioned EMI of ₹{audit.stated_emi:,.2f} exceeds the true actuarial reducing EMI of ₹{audit.calculated_reducing_emi:,.2f} by **₹{emi_diff:,.2f} per month**. Over the {audit.tenure_months}-month tenure, this quietly drains **₹{lifetime_emi_loss:,.2f}** from your net worth.\n\n" if emi_diff > 5 else f"- **EMI Verification**: Stated EMI (₹{audit.stated_emi or audit.calculated_reducing_emi:,.2f}) matches exact mathematical reducing balance amortization.\n\n") +
                 f"### 📋 Institutional Negotiation Playbook for the Borrower\n\n"
                 f"Take these exact, non-negotiable points to the Bank Branch Manager or Chief Credit Underwriter:\n\n"
                 f"1. **Rectify EMI Calculation**: *\"Our independent audit shows the actuarial reducing balance EMI on ₹{audit.principal:,.2f} at {audit.stated_annual_rate}% is ₹{audit.calculated_reducing_emi:,.2f}, not ₹{audit.stated_emi or audit.calculated_reducing_emi:,.2f}. Adjust our repayment schedule immediately before disbursal.\"*\n"
-                f"2. **Demand 50%–100% Fee Clawback**: *\"Because the True APR reaches {audit.effective_annual_apr:.2f}%, we require a minimum 50% waiver on the ₹{audit.raw_processing_fee + audit.raw_documentation_charges:,.2f} upfront charges to bring the effective cost in line with market benchmarks.\"*\n"
-                f"3. **Zero Foreclosure Guarantee (RBI Circular RBI/2014-15/168)**: *\"Under RBI mandate, banks are strictly barred from levying prepayment or foreclosure charges on individual floating-rate loans. Provide explicit written confirmation in the sanction annexure that prepayment carries 0% penalty.\"*"
+                f"2. **Demand 50%–100% Fee Clawback**: *\"Because the True APR reaches {apr_str}, we require a minimum 50% waiver on the ₹{audit.raw_processing_fee + audit.raw_documentation_charges:,.2f} upfront charges to bring the effective cost in line with market benchmarks.\"*\n"
+                f"3. **Zero Foreclosure Guarantee (RBI Circulars DBOD.No.Dir.BC.107/13.03.00/2013-14 & DNBR CC.No.101/03.10.001/2019-20)**: *\"Under RBI regulations, lenders are strictly prohibited from levying foreclosure charges or prepayment penalties on floating-rate individual term loans. Provide explicit written confirmation in the sanction terms and KFS that prepayment carries 0% penalty.\"*"
             )
